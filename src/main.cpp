@@ -58,7 +58,6 @@ void state_machine() {
                 if (button1.idle() && button2.idle()) {
                     state = ApplicationState::NETWORK_INITIALIZATION;
                 } else {
-                    led.blink(1, true);
                     state = ApplicationState::BUTTON_RELEASE_WAITING;
                 }
             }
@@ -66,7 +65,6 @@ void state_machine() {
 
         case ApplicationState::BUTTON_RELEASE_WAITING:
             if (button1.idle() && button2.idle()) {
-                led.flash();
                 state = ApplicationState::NETWORK_INITIALIZATION;
             }
             break;
