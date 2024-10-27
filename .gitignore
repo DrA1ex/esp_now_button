@@ -1,0 +1,10 @@
+.pio
+.idea
+.DS_Store
+
+src/_override
+src/credentials.h
+
+data/
+www/node_modules
+www/package-lock.json
