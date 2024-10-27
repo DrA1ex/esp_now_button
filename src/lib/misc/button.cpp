@@ -31,6 +31,9 @@ void Button::end() {
     detachInterrupt(digitalPinToInterrupt(_pin));
     pinMode(_pin, INPUT);
 
+    _click_count = 0;
+    _hold = false;
+
     D_PRINTF("Detach button interruption for pin %u\n", _pin);
 }
 
