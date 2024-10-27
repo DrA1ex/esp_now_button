@@ -75,6 +75,12 @@ void setup() {
         command_finished = true;
     });
 
+    if (button1.last_state().click_count == 0 && button2.last_state().click_count == 0) {
+        command_finished = true;
+        D_PRINT("No button data");
+        return;
+    }
+
     ButtonEvent events[] = {
             {
                     .event_type = button1.last_state().hold ? ButtonEventType::HOLD : ButtonEventType::CLICKED,
