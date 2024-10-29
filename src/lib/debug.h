@@ -12,18 +12,18 @@
 #define D_WRITE(x) Serial.print(x)
 
 #define D_PRINT_HEX(ptr, length)                        \
-        D_WRITE("HEX: ");                               \
+        D_WRITE("{ HEX: ");                               \
         for (unsigned int i = 0; i < length; ++i) {     \
             D_PRINTF("%02X", (ptr)[i]);                 \
         }                                               \
-        D_PRINT()
+        D_PRINT(" }")
 
 #define D_PRINT_BIN(value)                                  \
-        D_WRITE("BIN: ");                                   \
+        D_WRITE("{ BIN: ");                                   \
         for(int i = sizeof(value) * 8 - 1; i >= 0; --i) {   \
             D_WRITE((value >> i) & 0b1);                    \
         }                                                   \
-        D_PRINT()
+        D_PRINT(" }")
 
 #define D_TIME_STRING(unix_time) ([](time_t time) {                             \
         static char buffer[20];                                                 \
