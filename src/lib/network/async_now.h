@@ -35,7 +35,7 @@ public:
 
     bool begin();
 
-    Future<void> send(const uint8_t *mac_addr, uint8_t *data, uint8_t size);
+    Future<void> send(const uint8_t *mac_addr, const uint8_t *data, uint8_t size);
 
     bool register_peer(const uint8_t *mac_addr);
     void set_on_packet_cb(AsyncEspNowOnPacketCb cb) { _on_packet_cb = std::move(cb); };

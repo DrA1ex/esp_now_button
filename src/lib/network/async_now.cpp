@@ -34,7 +34,7 @@ bool AsyncEspNow::begin() {
     return true;
 }
 
-Future<void> AsyncEspNow::send(const uint8_t *mac_addr, uint8_t *data, uint8_t size) {
+Future<void> AsyncEspNow::send(const uint8_t *mac_addr, const uint8_t *data, uint8_t size) {
     bool success = _initialized;
     success = success && register_peer(mac_addr);
     success = success && esp_now_send(mac_addr, data, size) == ESP_OK;

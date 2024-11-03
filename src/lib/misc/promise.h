@@ -12,6 +12,7 @@ template<typename T> class Promise;
 
 typedef std::function<void(bool success)> FutureFinishedCb;
 
+#define xIsInISR() (xPortInIsrContext() || xPortInterruptedFromISRContext())
 
 class FutureBase {
 protected:
@@ -76,6 +77,8 @@ template<>
 class Future<void> final : public FutureBase {
 public:
     inline Future(const std::shared_ptr<Promise<void>> &promise); // NOLINT(*-explicit-constructor)
+    inline Future(const std::shared_ptr<PromiseBase> &promise); // NOLINT(*-explicit-constructor)
+    inline Future(const FutureBase &future); // NOLINT(*-explicit-constructor)
 
     static inline Future successful();
     static inline Future errored();
@@ -86,6 +89,10 @@ class PromiseBase {
     volatile bool _success = false;
 
     std::vector<FutureFinishedCb> _on_finished_callbacks;
+
+#ifdef DEBUG
+    int _initial_core_id = xPortGetCoreID();
+#endif
 
 public:
     PromiseBase(const PromiseBase &) = delete;
@@ -104,25 +111,50 @@ public:
     static inline Future<void> any(const std::vector<FutureBase> &collection);
 
 protected:
+    portMUX_TYPE spinlock = portMUX_INITIALIZER_UNLOCKED;
+
     PromiseBase() = default;
     PromiseBase(PromiseBase &&) = default;
 
     void set_success() {
-        if (_finished) return;
+        portENTER_CRITICAL(&spinlock);
 
-        _finished = true;
-        _success = true;
+        bool already_finished = _finished;
+        if (!already_finished) {
+            _finished = true;
+            _success = true;
+        }
+
+        //TODO: Call callback without critical
+        if (!already_finished) {
+            _on_promise_finished();
+        }
+        portEXIT_CRITICAL(&spinlock);
     }
 
     void set_error() {
-        if (_finished) return;
+        portENTER_CRITICAL(&spinlock);
 
-        _finished = true;
-        _success = false;
+        bool already_finished = _finished;
+        if (!already_finished) {
+            _finished = true;
+            _success = false;
+        }
+
+        if (!already_finished) {
+            _on_promise_finished();
+        }
+        portEXIT_CRITICAL(&spinlock);
     }
 
 private:
     void _on_promise_finished() {
+#ifdef DEBUG
+        if (xIsInISR() || _initial_core_id != xPortGetCoreID()) {
+            D_PRINTF("Promise (%p): Finished from different thread or ISR. It may lead to undefined behavior\r\n", this);
+        }
+#endif
+
         VERBOSE(D_PRINTF("Promise (%p): Done\r\n", this));
         if (_on_finished_callbacks.empty()) return;
 
@@ -151,10 +183,18 @@ public:
     }
 
     void set_success(T value) {
-        if (finished()) return;
+        portENTER_CRITICAL(&spinlock);
 
-        _result = std::move(value);
-        PromiseBase::set_success();
+        bool already_finished = finished();
+        if (!already_finished) {
+            _result = std::move(value);
+        }
+
+        portEXIT_CRITICAL(&spinlock);
+
+        if (!already_finished) {
+            PromiseBase::set_success();
+        }
     }
 
     using PromiseBase::set_error;
@@ -203,6 +243,8 @@ Future<T> Future<T>::successful(T value) {
 }
 
 Future<void>::Future(const std::shared_ptr<Promise<void>> &promise) : FutureBase(promise) {}
+Future<void>::Future(const std::shared_ptr<PromiseBase> &promise) : FutureBase(promise) {}
+Future<void>::Future(const FutureBase &future) : FutureBase(future) {}
 
 Future<void> Future<void>::successful() {
     auto promise = Promise<void>::create();
@@ -222,7 +264,9 @@ bool PromiseBase::wait(unsigned long timeout, unsigned long delay_interval) cons
     VERBOSE(D_PRINTF("Promise: waiting, timeout: %lu\r\n", timeout));
 
     auto start = millis();
-    while (!_finished && (timeout == 0 || millis() - start < timeout)) { delay(delay_interval); }
+    while (!_finished && (timeout == 0 || millis() - start < timeout)) {
+        delay(delay_interval);
+    }
 
     VERBOSE(D_PRINTF("Promise: Finished with status: %s. Elapsed: %lu\r\n", finished() ? "Done" : "Timeout", millis() - start));
 
@@ -230,16 +274,32 @@ bool PromiseBase::wait(unsigned long timeout, unsigned long delay_interval) cons
 }
 
 void PromiseBase::on_finished(FutureFinishedCb callback) {
-    if (_finished) {
-        VERBOSE(D_PRINTF("Promise (%p): Set on_finished callback for already finished promise\r\n", this));
-        callback(_success);
-    } else {
+#ifdef DEBUG
+    if (xIsInISR() || _initial_core_id != xPortGetCoreID()) {
+        D_PRINTF("Promise (%p): Set on_finished callback from different thread  or ISR. It may lead to undefined behavior\r\n", this);
+    }
+#endif
+
+    portENTER_CRITICAL(&spinlock);
+
+    bool finished = _finished;
+    if (!finished) {
         VERBOSE(D_PRINTF("Promise (%p): Add on_finished callback\r\n", this));
         _on_finished_callbacks.push_back(std::move(callback));
     }
+
+    if (finished) {
+        VERBOSE(D_PRINTF("Promise (%p): Set on_finished callback for already finished promise\r\n", this));
+        callback(_success);
+    }
+
+    portEXIT_CRITICAL(&spinlock);
 }
 
 Future<void> PromiseBase::all(const std::vector<FutureBase> &collection) {
+    if (collection.empty()) return Future<void>::errored();
+    if (collection.size() == 1) return collection[0];
+
     VERBOSE(D_PRINTF("Promise::all(): Start aggregation of %i futures\r\n", collection.size()));
 
     bool already_finished = true;
@@ -255,7 +315,7 @@ Future<void> PromiseBase::all(const std::vector<FutureBase> &collection) {
         return Future<void>::successful();
     }
 
-    auto result_promise = std::make_shared<Promise<void>>();
+    auto result_promise = Promise<void>::create();
     auto count_left = std::make_shared<std::size_t>(collection.size());
 
     auto finished_cb = [count_left, result_promise](bool success) {
@@ -277,6 +337,9 @@ Future<void> PromiseBase::all(const std::vector<FutureBase> &collection) {
 }
 
 Future<void> PromiseBase::any(const std::vector<FutureBase> &collection) {
+    if (collection.empty()) return Future<void>::errored();
+    if (collection.size() == 1) return collection[0];
+
     VERBOSE(D_PRINTF("Promise::any(): Start aggregation of %i futures\r\n", collection.size()));
 
     for (const auto &future: collection) {
