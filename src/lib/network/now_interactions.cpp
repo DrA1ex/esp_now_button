@@ -14,10 +14,18 @@ bool EspNowInteraction::begin() {
     return true;
 }
 
+Future<SendResponse> EspNowInteraction::send(const uint8_t *mac_addr, const char *str) {
+    return send(mac_addr, (uint8_t *) str, strlen(str));
+}
+
 Future<SendResponse> EspNowInteraction::send(const uint8_t *mac_addr, const uint8_t *data, uint16_t size) {
     if (!_initialized) return Future<SendResponse>::errored();
 
     return _send_impl(_id++, mac_addr, data, size);
+}
+
+Future<EspNowPacket> EspNowInteraction::request(const uint8_t *mac_addr, const char *str) {
+    return request(mac_addr, (uint8_t *) str, strlen(str));
 }
 
 Future<EspNowPacket> EspNowInteraction::request(const uint8_t *mac_addr, const uint8_t *data, uint16_t size) {
@@ -94,7 +102,7 @@ Future<EspNowPacket> EspNowInteraction::_request_impl(uint8_t id, const uint8_t 
         VERBOSE(D_PRINTF("EspNowInteraction: request %i sent. Waiting for response...\r\n", response.id));
 
         return Future {promise};
-    }).on_error([this,id]() {
+    }).on_error([this, id] {
         _requests.erase(id);
         return Future<EspNowPacket>::errored();
     });

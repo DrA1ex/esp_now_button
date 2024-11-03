@@ -37,7 +37,14 @@ public:
 
     bool begin();
 
+    template<typename T, typename = std::enable_if_t<!std::is_pointer_v<T> && (std::is_scalar_v<T> || std::is_standard_layout_v<T>)>>
+    Future<SendResponse> send(const uint8_t *mac_addr, const T &value);
+    Future<SendResponse> send(const uint8_t *mac_addr, const char *str);
     Future<SendResponse> send(const uint8_t *mac_addr, const uint8_t *data, uint16_t size);
+
+    template<typename T, typename = std::enable_if_t<!std::is_pointer_v<T> && (std::is_scalar_v<T> || std::is_standard_layout_v<T>)>>
+    Future<EspNowPacket> request(const uint8_t *mac_addr, const T &value);
+    Future<EspNowPacket> request(const uint8_t *mac_addr, const char *str);
     Future<EspNowPacket> request(const uint8_t *mac_addr, const uint8_t *data, uint16_t size);
 
 private:
@@ -46,3 +53,13 @@ private:
 
     void _on_packet_received(EspNowPacket packet);
 };
+
+template<typename T, typename>
+Future<SendResponse> EspNowInteraction::send(const uint8_t *mac_addr, const T &value) {
+    return send(mac_addr, &value, sizeof(T));
+}
+
+template<typename T, typename>
+Future<EspNowPacket> EspNowInteraction::request(const uint8_t *mac_addr, const T &value) {
+    return request(mac_addr, &value, sizeof(T));
+}
