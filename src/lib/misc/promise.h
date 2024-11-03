@@ -30,16 +30,22 @@ public:
     [[nodiscard]] inline bool wait(unsigned long timeout = 0, unsigned long delay_interval = 1) const;
     inline void on_finished(FutureFinishedCb callback) const;
 
-    template<typename T>
-    Future<T> then(std::function<Future<T>(const FutureBase &)> fn) {
-        auto chained_promise = Promise<T>::create();
+protected:
+    template<typename T, typename R>
+    static Future<R> then(const Future<T> &future, std::function<Future<R>(const Future<T> &)> fn) {
+        VERBOSE(D_PRINTF("Promise (%p): Set continuation (promise)\n", future.promise.get()));
 
-        on_finished([this, fn = std::move(fn), chained_promise](bool success) {
+        auto chained_promise = Promise<R>::create();
+        future.on_finished([self = future, fn = std::move(fn), chained_promise](bool success) {
             if (success) {
-                auto ret_promise = fn(*this);
-                ret_promise.on_finished([ret_promise, chained_promise](bool success) {
-                    if (success) chained_promise->set_success(ret_promise.result());
-                    else chained_promise->set_error();
+                auto ret_future = fn(self);
+                ret_future.on_finished([ret_future, chained_promise](bool inner_success) {
+                    if (inner_success) {
+                        if constexpr (std::is_void_v<R>) chained_promise->set_success();
+                        else chained_promise->set_success(ret_future.result());
+                    } else {
+                        chained_promise->set_error();
+                    }
                 });
             } else {
                 chained_promise->set_error();
@@ -49,16 +55,59 @@ public:
         return chained_promise;
     }
 
-    template<typename T>
-    Future<T> then(std::function<T(const FutureBase &)> fn) {
-        auto chained_promise = Promise<T>::create();
+    template<typename T, typename R>
+    static Future<R> then(const Future<T> &future, std::function<R(const Future<T> &)> fn) {
+        VERBOSE(D_PRINTF("Promise (%p): Set continuation (non-promise)\n", future.promise.get()));
 
-        on_finished([this, fn = std::move(fn), chained_promise](bool success) {
-            if (success) chained_promise->set_success(fn(*this));
-            else chained_promise.set_error();
+        auto chained_promise = Promise<T>::create();
+        future.on_finished([self = future, fn = std::move(fn), chained_promise](bool success) {
+            if (success) {
+                auto result = fn(self);
+                if constexpr (std::is_void_v<R>) chained_promise->set_success();
+                else chained_promise->set_success(result);
+            } else {
+                chained_promise->set_error();
+            }
         });
 
         return chained_promise;
+    }
+
+    template<typename T>
+    static Future<T> on_error(const Future<T> &future, std::function<Future<T>()> fn) {
+        VERBOSE(D_PRINTF("Promise (%p): Set error handler\n", future.promise.get()));
+
+        auto chained_promise = Promise<T>::create();
+        future.on_finished([self = future, fn = std::move(fn), chained_promise](bool success) {
+            if (success) {
+                if constexpr (std::is_void_v<T>) chained_promise->set_success();
+                else chained_promise->set_success(self.result());
+            }
+
+            auto ret_future = fn();
+            ret_future.on_finished([ret_future, chained_promise](bool inner_success) {
+                if (inner_success) {
+                    if constexpr (std::is_void_v<T>) chained_promise->set_success();
+                    else chained_promise->set_success(ret_future.result());
+                } else {
+                    chained_promise->set_error();
+                }
+            });
+        });
+
+        return chained_promise;
+    }
+
+    template<typename T>
+    static Future<T> finally(const Future<T> &future, std::function<void()> fn) {
+        VERBOSE(D_PRINTF("Promise (%p): Set finally handler\n", future.promise.get()));
+
+        auto chained_promise = Promise<T>::create();
+        future.on_finished([fn = std::move(fn)](auto) {
+            fn();
+        });
+
+        return future;
     }
 };
 
@@ -71,6 +120,12 @@ public:
 
     static Future successful(T value);
     static Future errored();
+
+    template<typename R> Future<R> then(std::function<Future<R>(const Future &)> fn);
+    template<typename R> Future<R> then(std::function<R(const Future &)> fn);
+
+    Future on_error(std::function<Future()> fn);
+    Future finally(std::function<void()> fn);
 };
 
 template<>
@@ -82,6 +137,12 @@ public:
 
     static inline Future successful();
     static inline Future errored();
+
+    template<typename R> Future<R> then(std::function<Future<R>(const Future &)> fn);
+    template<typename R> Future<R> then(std::function<R(const Future &)> fn);
+
+    inline Future on_error(std::function<Future()> fn);
+    inline Future finally(std::function<void()> fn);
 };
 
 class PromiseBase {
@@ -125,7 +186,7 @@ protected:
             _success = true;
         }
 
-        //TODO: Call callback without critical
+        //TODO: Call callback without critical section
         if (!already_finished) {
             _on_promise_finished();
         }
@@ -236,6 +297,20 @@ Future<T> Future<T>::errored() {
 }
 
 template<typename T>
+template<typename R>
+Future<R> Future<T>::then(std::function<Future<R>(const Future &)> fn) { return FutureBase::then<T, R>(*this, std::move(fn)); }
+
+template<typename T>
+template<typename R>
+Future<R> Future<T>::then(std::function<R(const Future &)> fn) { return FutureBase::then<T, R>(*this, std::move(fn)); }
+
+template<typename T>
+Future<T> Future<T>::on_error(std::function<Future()> fn) { return FutureBase::on_error(*this, std::move(fn)); }
+
+template<typename T>
+Future<T> Future<T>::finally(std::function<void()> fn) { return FutureBase::finally(*this, std::move(fn)); }
+
+template<typename T>
 Future<T> Future<T>::successful(T value) {
     auto promise = Promise<T>::create();
     promise->set_success(value);
@@ -258,17 +333,27 @@ Future<void> Future<void>::errored() {
     return promise;
 }
 
+template<typename R>
+Future<R> Future<void>::then(std::function<Future<R>(const Future &)> fn) { return FutureBase::then<void, R>(*this, std::move(fn)); }
+
+template<typename R>
+Future<R> Future<void>::then(std::function<R(const Future &)> fn) { return FutureBase::then<void, R>(*this, std::move(fn)); }
+
+Future<void> Future<void>::on_error(std::function<Future()> fn) { return FutureBase::on_error(*this, std::move(fn)); }
+
+Future<void> Future<void>::finally(std::function<void()> fn) { return FutureBase::finally(*this, std::move(fn)); }
+
 bool PromiseBase::wait(unsigned long timeout, unsigned long delay_interval) const {
     if (_finished) return true;
 
-    VERBOSE(D_PRINTF("Promise: waiting, timeout: %lu\r\n", timeout));
+    VERBOSE(D_PRINTF("Promise (%p): waiting, timeout: %lu\r\n", this, timeout));
 
     auto start = millis();
     while (!_finished && (timeout == 0 || millis() - start < timeout)) {
         delay(delay_interval);
     }
 
-    VERBOSE(D_PRINTF("Promise: Finished with status: %s. Elapsed: %lu\r\n", finished() ? "Done" : "Timeout", millis() - start));
+    VERBOSE(D_PRINTF("Promise (%p): Finished with status: %s. Elapsed: %lu\r\n", this, finished() ? "Done" : "Timeout", millis() - start));
 
     return _finished;
 }

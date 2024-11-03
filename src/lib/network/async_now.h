@@ -23,7 +23,7 @@ class AsyncEspNow {
     std::vector<esp_now_peer_info> _peers;
     std::unordered_map<uint64_t, std::queue<std::shared_ptr<Promise<void>>>> _send_order;
 
-    AsyncEspNowOnPacketCb _on_packet_cb{};
+    AsyncEspNowOnPacketCb _on_packet_cb {};
 
     AsyncEspNow() = default;
 

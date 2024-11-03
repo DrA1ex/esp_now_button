@@ -7,7 +7,7 @@ uint64_t mac_to_key(const uint8_t *mac_addr) {
     return mac_addr_key;
 }
 
-AsyncEspNow AsyncEspNow::_instance{};
+AsyncEspNow AsyncEspNow::_instance {};
 
 bool AsyncEspNow::begin() {
     if (_initialized) return false;
@@ -52,7 +52,7 @@ Future<void> AsyncEspNow::send(const uint8_t *mac_addr, const uint8_t *data, uin
     auto promise = std::make_shared<Promise<void>>();
     _send_order[mac_to_key(mac_addr)].push(promise);
 
-    return Future{promise};
+    return Future {promise};
 }
 
 bool AsyncEspNow::register_peer(const uint8_t *mac_addr) {
@@ -60,7 +60,7 @@ bool AsyncEspNow::register_peer(const uint8_t *mac_addr) {
     if (esp_now_is_peer_exist(mac_addr)) return true;
 
     //TODO: Implement unregister_peer and reuse channels
-    esp_now_peer_info peer{};
+    esp_now_peer_info peer {};
     peer.channel = 0; //TODO: Use custom channels for every peer (?)
     peer.encrypt = false;
     memcpy(peer.peer_addr, mac_addr, ESP_NOW_ETH_ALEN);
@@ -112,7 +112,7 @@ void AsyncEspNow::_on_sent(const uint8_t *mac_addr, esp_now_send_status_t status
 }
 
 void AsyncEspNow::_on_receive(const uint8_t *mac_addr, const uint8_t *data, int data_len) {
-    EspNowPacket packet{};
+    EspNowPacket packet {};
 
     memcpy(packet.mac_addr, mac_addr, sizeof(packet.mac_addr));
     packet.data.assign(data, data + data_len);
