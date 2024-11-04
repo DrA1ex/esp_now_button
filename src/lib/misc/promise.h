@@ -41,6 +41,12 @@ public:
     static Future<void> all(const std::vector<FutureBase> &collection);
     static Future<void> any(const std::vector<FutureBase> &collection);
 
+    template<typename T>
+    static Future<T> sequential(
+        Future<T> first,
+        std::function<bool(const Future<T> &prev)> has_next_fn,
+        std::function<Future<T>(Future<T> prev)> fn);
+
 protected:
     portMUX_TYPE spinlock = portMUX_INITIALIZER_UNLOCKED;
 
@@ -52,6 +58,12 @@ protected:
 
 private:
     void _on_promise_finished();
+
+    template<class T>
+    static void _sequential_step(
+        std::shared_ptr<Promise<T>> result_promise, Future<T> first,
+        std::function<bool(const Future<T> &prev)> has_next_fn,
+        std::function<Future<T>(Future<T> prev)> fn);
 };
 
 template<typename T>
@@ -85,7 +97,6 @@ public:
     static std::shared_ptr<Promise> create() { return std::make_shared<Promise>(); }
 };
 
-
 template<typename T>
 T Promise<T>::result() const {
     if (finished() && success()) return _result;
@@ -110,4 +121,48 @@ void Promise<T>::set_success(T value) {
     if (!already_finished) {
         PromiseBase::set_success();
     }
+}
+
+template<typename T>
+Future<T> PromiseBase::sequential(
+    Future<T> first, std::function<bool(const Future<T> &prev)> has_next_fn,
+    std::function<Future<T>(Future<T> prev)> fn) {
+
+    auto result_promise = Promise<T>::create();
+
+    VERBOSE(D_PRINTF("Promise::sequential(): Start sequence (%p)\r\n", result_promise.get()));
+    _sequential_step<T>(result_promise, std::move(first), std::move(has_next_fn), std::move(fn));
+
+    return result_promise;
+}
+
+template<typename T>
+void PromiseBase::_sequential_step(
+    std::shared_ptr<Promise<T>> result_promise, Future<T> first,
+    std::function<bool(const Future<T> &prev)> has_next_fn,
+    std::function<Future<T>(Future<T> prev)> fn) {
+
+    first.on_finished([
+            result_promise, prev=std::move(first),
+            has_next_fn=std::move(has_next_fn), fn = std::move(fn)
+        ](bool success) {
+            VERBOSE(D_PRINTF("Promise::sequential(): Sequence (%p) step promise resolved\r\n", result_promise.get()));
+
+            if (has_next_fn(prev)) {
+                auto next = fn(prev);
+                VERBOSE(D_PRINTF("Promise::sequential(): Sequence (%p) next step\r\n", result_promise.get()));
+
+                _sequential_step(result_promise, std::move(next), std::move(has_next_fn), std::move(fn));
+            } else {
+                VERBOSE(D_PRINTF("Promise::sequential(): Finished sequence (%p) with result: %s\r\n",
+                    result_promise.get(), prev.success() ? "success" : "failed"));
+
+                if (success) {
+                    if constexpr (std::is_void_v<T>) result_promise->set_success();
+                    else result_promise->set_success(prev.result());
+                } else {
+                    result_promise->set_error();
+                }
+            }
+        });
 }

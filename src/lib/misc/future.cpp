@@ -5,9 +5,13 @@ bool FutureBase::has_result() const { return promise->has_result(); }
 bool FutureBase::finished() const { return promise->finished(); }
 bool FutureBase::success() const { return promise->success(); }
 
-bool FutureBase::wait(unsigned long timeout, unsigned long delay_interval) const { return promise->wait(timeout, delay_interval); }
+bool FutureBase::wait(unsigned long timeout, unsigned long delay_interval) const {
+    return promise->wait(timeout, delay_interval);
+}
 
-void FutureBase::on_finished(FutureFinishedCb callback) const { promise->on_finished(std::move(callback)); }
+void FutureBase::on_finished(FutureFinishedCb callback) const {
+    const_cast<PromiseBase &>(*promise).on_finished(std::move(callback));
+}
 
 Future<void>::Future(const std::shared_ptr<Promise<void>> &promise) : FutureBase(promise) {}
 Future<void>::Future(const std::shared_ptr<PromiseBase> &promise) : FutureBase(promise) {}
@@ -25,6 +29,10 @@ Future<void> Future<void>::errored() {
     return promise;
 }
 
-Future<void> Future<void>::on_error(std::function<Future()> fn) { return FutureBase::on_error(*this, std::move(fn)); }
+Future<void> Future<void>::on_error(std::function<Future(const Future &)> fn) const {
+    return FutureBase::on_error(*this, std::move(fn));
+}
 
-Future<void> Future<void>::finally(std::function<void()> fn) { return FutureBase::finally(*this, std::move(fn)); }
+Future<void> Future<void>::finally(std::function<void(const Future &)> fn) const {
+    return FutureBase::finally(*this, std::move(fn));
+}
