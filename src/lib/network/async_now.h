@@ -37,8 +37,13 @@ public:
 
     Future<void> send(const uint8_t *mac_addr, const uint8_t *data, uint8_t size);
 
-    bool register_peer(const uint8_t *mac_addr);
-    void set_on_packet_cb(AsyncEspNowOnPacketCb cb) { _on_packet_cb = std::move(cb); };
+    bool change_channel(uint8_t channel);
+
+    bool is_peer_exists(const uint8_t *mac_addr) const;
+    bool register_peer(const uint8_t *mac_addr, uint8_t channel = 0);
+    bool unregister_peer(const uint8_t *mac_addr);
+
+    void set_on_packet_cb(AsyncEspNowOnPacketCb cb) { _on_packet_cb = std::move(cb); }
 
 private:
     static void _on_sent(const uint8_t *mac_addr, esp_now_send_status_t status);

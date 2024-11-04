@@ -47,9 +47,15 @@ public:
     Future<EspNowPacket> request(const uint8_t *mac_addr, const char *str);
     Future<EspNowPacket> request(const uint8_t *mac_addr, const uint8_t *data, uint16_t size);
 
+    Future<uint8_t> discover_peer_channel(const uint8_t *mac_addr);
+
+    static void print_mac() { D_PRINTF("Mac: %s\r\n", WiFi.macAddress().c_str()); }
+
 private:
     Future<SendResponse> _send_impl(uint8_t id, const uint8_t *mac_addr, const uint8_t *data, uint16_t size);
     Future<EspNowPacket> _request_impl(uint8_t id, const uint8_t *mac_addr, const uint8_t *data, uint16_t size);
+
+    Future<uint8_t> _configure_peer_channel(const uint8_t *mac_addr, uint8_t channel);
 
     void _on_packet_received(EspNowPacket packet);
 };

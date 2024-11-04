@@ -34,6 +34,22 @@ Future<EspNowPacket> EspNowInteraction::request(const uint8_t *mac_addr, const u
     return _request_impl(_id++, mac_addr, data, size);
 }
 
+Future<uint8_t> EspNowInteraction::discover_peer_channel(const uint8_t *mac_addr) {
+    D_WRITE("EspNowInteraction: Discovering peer channel: ");
+    D_PRINT_HEX(mac_addr, ESP_NOW_ETH_ALEN);
+
+    if (!_async_now.is_peer_exists(mac_addr)) _async_now.register_peer(mac_addr);
+
+    auto channel = std::make_shared<uint8_t>();
+    return PromiseBase::sequential<uint8_t>(
+        _configure_peer_channel(mac_addr, (*channel)++),
+        [channel](auto future) { return !future.success() && *channel < 14; },
+        [this, mac_addr, channel=std::move(channel)](auto) {
+            return _configure_peer_channel(mac_addr, (*channel)++);
+        }
+    );
+}
+
 Future<SendResponse> EspNowInteraction::_send_impl(uint8_t id, const uint8_t *mac_addr, const uint8_t *data, uint16_t size) {
     if (size > ESP_NOW_INTERACTION_MAX_DATA_LENGTH) {
         D_PRINTF("EspNowInteraction: sending data to big: %i (max %i) \r\n", size, ESP_NOW_INTERACTION_MAX_DATA_LENGTH);
@@ -102,10 +118,26 @@ Future<EspNowPacket> EspNowInteraction::_request_impl(uint8_t id, const uint8_t 
         VERBOSE(D_PRINTF("EspNowInteraction: request %i sent. Waiting for response...\r\n", response.id));
 
         return Future {promise};
-    }).on_error([this, id] {
+    }).on_error([this, id](auto future) {
         _requests.erase(id);
-        return Future<EspNowPacket>::errored();
+        return future;
     });
+}
+
+Future<uint8_t> EspNowInteraction::_configure_peer_channel(const uint8_t *mac_addr, uint8_t channel) {
+    if (channel > 14 || !_async_now.change_channel(channel)) return Future<uint8_t>::errored();
+
+    D_PRINTF("EspNowInteraction: Trying channel %i...\r\n", channel + 1);
+
+    uint8_t data[1] {};
+    return _async_now.send(mac_addr, data, sizeof(data))
+                     .then<uint8_t>([=](auto) {
+                         D_PRINTF("EspNowInteraction: Channel %i is valid!\r\n", channel + 1);
+                         return channel;
+                     }).on_error([=](auto future) {
+                         D_PRINTF("EspNowInteraction: Channel %i isn't valid!\r\n", channel + 1);
+                         return future;
+                     });
 }
 
 void EspNowInteraction::_on_packet_received(EspNowPacket packet) {

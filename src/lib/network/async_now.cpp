@@ -1,5 +1,7 @@
 #include "async_now.h"
 
+#include <esp_wifi.h>
+
 uint64_t mac_to_key(const uint8_t *mac_addr) {
     uint64_t mac_addr_key = 0;
     memcpy(&mac_addr_key, mac_addr, ESP_NOW_ETH_ALEN);
@@ -20,8 +22,8 @@ bool AsyncEspNow::begin() {
         return false;
     }
 
-    bool cb_init_success = esp_now_register_send_cb(AsyncEspNow::_on_sent) == ESP_OK;
-    cb_init_success = cb_init_success && esp_now_register_recv_cb(AsyncEspNow::_on_receive) == ESP_OK;
+    bool cb_init_success = esp_now_register_send_cb(_on_sent) == ESP_OK;
+    cb_init_success = cb_init_success && esp_now_register_recv_cb(_on_receive) == ESP_OK;
 
     if (!cb_init_success) {
         esp_now_deinit();
@@ -55,13 +57,16 @@ Future<void> AsyncEspNow::send(const uint8_t *mac_addr, const uint8_t *data, uin
     return Future {promise};
 }
 
-bool AsyncEspNow::register_peer(const uint8_t *mac_addr) {
+bool AsyncEspNow::is_peer_exists(const uint8_t *mac_addr) const {
+    return _initialized && esp_now_is_peer_exist(mac_addr);
+}
+
+bool AsyncEspNow::register_peer(const uint8_t *mac_addr, uint8_t channel) {
     if (!_initialized) return false;
     if (esp_now_is_peer_exist(mac_addr)) return true;
 
-    //TODO: Implement unregister_peer and reuse channels
     esp_now_peer_info peer {};
-    peer.channel = 0; //TODO: Use custom channels for every peer (?)
+    peer.channel = channel;
     peer.encrypt = false;
     memcpy(peer.peer_addr, mac_addr, ESP_NOW_ETH_ALEN);
 
@@ -81,8 +86,34 @@ bool AsyncEspNow::register_peer(const uint8_t *mac_addr) {
     return true;
 }
 
+bool AsyncEspNow::unregister_peer(const uint8_t *mac_addr) {
+    if (!_initialized) return false;
+    if (!esp_now_is_peer_exist(mac_addr)) return true;
+
+    _peers.erase(std::find_if(_peers.begin(), _peers.end(), [mac_addr](auto &peer) {
+        return memcmp(peer.peer_addr, mac_addr, ESP_NOW_ETH_ALEN) == 0;
+    }));
+
+    D_WRITE("AsyncEspNow: Unregister peer: ");
+    D_PRINT_HEX(mac_addr, ESP_NOW_ETH_ALEN);
+
+    return esp_now_del_peer(mac_addr) == ESP_OK;
+}
+
+bool AsyncEspNow::change_channel(uint8_t channel) { // NOLINT(*-make-member-function-const)
+    if (!_initialized) return false;
+
+    D_PRINTF("AsyncEspNow: Change channel to: %i\r\n", channel + 1);
+
+    bool success = esp_wifi_set_promiscuous(true) == ESP_OK;
+    success && esp_wifi_set_channel(channel, WIFI_SECOND_CHAN_NONE) == ESP_OK;
+    success && esp_wifi_set_promiscuous(false) == ESP_OK;
+
+    return success;
+}
+
 void AsyncEspNow::_on_sent(const uint8_t *mac_addr, esp_now_send_status_t status) {
-    auto &self = AsyncEspNow::instance();
+    auto &self = instance();
 
     uint64_t mac_addr_key = mac_to_key(mac_addr);
     auto it = self._send_order.find(mac_addr_key);
@@ -122,7 +153,7 @@ void AsyncEspNow::_on_receive(const uint8_t *mac_addr, const uint8_t *data, int 
     D_PRINT_HEX(mac_addr, ESP_NOW_ETH_ALEN);
     D_PRINTF("\t- Size: %i\n", data_len);
 
-    auto &self = AsyncEspNow::instance();
+    auto &self = instance();
     if (self._on_packet_cb) {
         self._on_packet_cb(std::move(packet));
     }
