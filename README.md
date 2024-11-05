@@ -1,6 +1,6 @@
-# esp-now Button
+# esp-now-button
 
-A lightweight, energy-efficient portable button.
+Energy-efficient portable button for smart home control.
 
 ## Features
 
