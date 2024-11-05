@@ -9,7 +9,7 @@ uint64_t mac_to_key(const uint8_t *mac_addr) {
     return mac_addr_key;
 }
 
-AsyncEspNow AsyncEspNow::_instance {};
+AsyncEspNow AsyncEspNow::_instance{};
 
 bool AsyncEspNow::begin() {
     if (_initialized) return false;
@@ -49,12 +49,12 @@ Future<void> AsyncEspNow::send(const uint8_t *mac_addr, const uint8_t *data, uin
     D_PRINT("AsyncEspNow: sending packet");
     D_WRITE("\t- Destination: ");
     D_PRINT_HEX(mac_addr, ESP_NOW_ETH_ALEN);
-    D_PRINTF("\t- Size: %i\n", size);
+    D_PRINTF("\t- Size: %i\r\n", size);
 
     auto promise = std::make_shared<Promise<void>>();
     _send_order[mac_to_key(mac_addr)].push(promise);
 
-    return Future {promise};
+    return Future{promise};
 }
 
 bool AsyncEspNow::is_peer_exists(const uint8_t *mac_addr) const {
@@ -65,7 +65,7 @@ bool AsyncEspNow::register_peer(const uint8_t *mac_addr, uint8_t channel) {
     if (!_initialized) return false;
     if (esp_now_is_peer_exist(mac_addr)) return true;
 
-    esp_now_peer_info peer {};
+    esp_now_peer_info peer{};
     peer.channel = channel;
     peer.encrypt = false;
     memcpy(peer.peer_addr, mac_addr, ESP_NOW_ETH_ALEN);
@@ -100,7 +100,8 @@ bool AsyncEspNow::unregister_peer(const uint8_t *mac_addr) {
     return esp_now_del_peer(mac_addr) == ESP_OK;
 }
 
-bool AsyncEspNow::change_channel(uint8_t channel) { // NOLINT(*-make-member-function-const)
+bool AsyncEspNow::change_channel(uint8_t channel) {
+    // NOLINT(*-make-member-function-const)
     if (!_initialized) return false;
 
     D_PRINTF("AsyncEspNow: Change channel to: %i\r\n", channel + 1);
@@ -143,15 +144,19 @@ void AsyncEspNow::_on_sent(const uint8_t *mac_addr, esp_now_send_status_t status
 }
 
 void AsyncEspNow::_on_receive(const uint8_t *mac_addr, const uint8_t *data, int data_len) {
-    EspNowPacket packet {};
+    EspNowPacket packet;
 
+    packet.size = data_len;
+    packet.data = std::shared_ptr<uint8_t[]>(new uint8_t[data_len]);
+    memcpy(packet.data.get(), data, data_len);
     memcpy(packet.mac_addr, mac_addr, sizeof(packet.mac_addr));
-    packet.data.assign(data, data + data_len);
 
     D_PRINT("AsyncEspNow: received packet");
     D_WRITE("\t- Sender: ");
     D_PRINT_HEX(mac_addr, ESP_NOW_ETH_ALEN);
-    D_PRINTF("\t- Size: %i\n", data_len);
+    D_PRINTF("\t- Size: %i\r\n", data_len);
+    D_WRITE("\t- Data: ");
+    D_PRINT_HEX(data, data_len);
 
     auto &self = instance();
     if (self._on_packet_cb) {

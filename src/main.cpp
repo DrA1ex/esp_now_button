@@ -31,27 +31,14 @@ Button button2(PIN_BUTTON2, true, true);
 auto &now = NowIo::instance();
 
 RTC_DATA_ATTR bool hub_addr_present = false;
-RTC_DATA_ATTR uint8_t hub_addr[6] = {0xCC, 0xDB, 0xA7, 0x14, 0x25, 0xF8};
+RTC_DATA_ATTR uint8_t hub_addr[6] {};
 RTC_DATA_ATTR static uint8_t wifi_channel = 0;
+RTC_DATA_ATTR uint8_t error_count = 0;
 
 void initialize_debugger();
 void state_machine();
 
 void setup() {
-    // initialize_debugger();
-    //
-    // now.begin();
-    //
-    // auto discovery_future = now.discover_hub(hub_addr);
-    // if (!discovery_future.wait(5000) || !discovery_future.success()) {
-    //     D_PRINT("*** Unable to find HUB. Exit...");
-    //     return;
-    // }
-    //
-    // D_PRINTF("*** HUB found: channel %i, addr: ", discovery_future.result() + 1);
-    // D_PRINT_HEX(hub_addr, 6);
-    // return;
-
     led.set_blink_repeat_interval(LED_HOLDING_BLINK_INTERVAL);
     led.begin();
 
@@ -59,6 +46,13 @@ void setup() {
     button2.begin(INPUT_PULLDOWN);
 
     led.flash();
+
+    if (error_count >= 3) {
+        hub_addr_present = false;
+        memset(hub_addr, 0, sizeof(hub_addr));
+        wifi_channel = 0;
+        error_count = 0;
+    }
 
     initialized_time = millis();
 }
@@ -142,15 +136,17 @@ void state_machine() {
                 }
             };
 
-            auto send_future = now.send_packet(hub_addr, (uint8_t) PacketType::BUTTON, events);
+            auto send_future = now.send(hub_addr, (uint8_t) PacketType::BUTTON, events);
             if (!send_future.wait(500) || !send_future.success()) {
                 D_PRINT("Failed to send message");
                 command_success = false;
+                ++error_count;
                 state = ApplicationState::FINISHED;
                 break;
             }
 
             command_success = true;
+            error_count = 0;
             state = ApplicationState::FINISHED;
             break;
         }

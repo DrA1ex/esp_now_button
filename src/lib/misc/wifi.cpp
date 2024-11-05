@@ -85,7 +85,8 @@ void WifiManager::_connect_ap() {
     WiFi.softAP(ssid, _password);
 
     D_PRINTF("Wi-Fi connected! Mode: AP, SSID: %s, Password: %s, IP address: ", ssid.c_str(), _password);
-    D_PRINT(WiFi.softAPIP());
+    D_WRITE(WiFi.softAPIP());
+    D_PRINTF(", Channel: %d\r\n", WiFi.channel());
 
     _ssid = ssid.c_str();
     _state = WifiManagerState::CONNECTED;
@@ -109,7 +110,8 @@ void WifiManager::_connect_sta_step() {
 
     if (WiFi.isConnected()) {
         D_PRINTF("Wi-Fi connected! Mode: STA, SSID: %s, IP address: ", _ssid);
-        D_PRINT(WiFi.localIP());
+        D_WRITE(WiFi.localIP());
+        D_PRINTF(", Channel: %d\r\n", WiFi.channel());
 
         _state = WifiManagerState::CONNECTED;
         return;

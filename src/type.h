@@ -3,10 +3,7 @@
 #include <cstdint>
 
 enum class PacketType : uint8_t {
-    BUTTON = 0,
-
-    PING      = 0xf0,
-    DISCOVERY = 0xf1,
+    BUTTON = 0
 };
 
 enum class ButtonEventType : uint8_t {

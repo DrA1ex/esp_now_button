@@ -10,7 +10,8 @@
 
 struct EspNowPacket {
     uint8_t mac_addr[6];
-    std::vector<uint8_t> data;
+    uint8_t size;
+    std::shared_ptr<uint8_t[]> data;
 };
 
 typedef std::function<void(EspNowPacket packet)> AsyncEspNowOnPacketCb;
