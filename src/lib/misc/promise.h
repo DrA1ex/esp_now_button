@@ -38,8 +38,8 @@ public:
     [[nodiscard]] bool wait(unsigned long timeout = 0, unsigned long delay_interval = 1) const;
     void on_finished(FutureFinishedCb callback);
 
-    static Future<void> all(const std::vector<FutureBase> &collection);
-    static Future<void> any(const std::vector<FutureBase> &collection);
+    static Future<void> all(const std::vector<Future<void>> &collection);
+    static Future<void> any(const std::vector<Future<void>> &collection);
 
     template<typename T>
     static Future<T> sequential(

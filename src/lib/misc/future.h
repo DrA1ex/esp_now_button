@@ -100,9 +100,12 @@ template<typename T, typename R> Future<R> FutureBase::then(const Future<T> &fut
     auto chained_promise = Promise<R>::create();
     future.on_finished([self = future, fn = std::move(fn), chained_promise](bool success) {
         if (success) {
-            auto result = fn(self);
-            if constexpr (std::is_void_v<R>) chained_promise->set_success();
-            else chained_promise->set_success(result);
+            if constexpr (std::is_void_v<R>) {
+                fn(self);
+                chained_promise->set_success();
+            } else {
+                chained_promise->set_success(fn(self));
+            }
         } else {
             chained_promise->set_error();
         }

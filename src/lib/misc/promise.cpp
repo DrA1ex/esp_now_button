@@ -10,11 +10,11 @@ void PromiseBase::set_success() {
         _success = true;
     }
 
-    //TODO: Call callback without critical section
+    portEXIT_CRITICAL(&spinlock);
+
     if (!already_finished) {
         _on_promise_finished();
     }
-    portEXIT_CRITICAL(&spinlock);
 }
 
 void PromiseBase::set_error() {
@@ -26,10 +26,11 @@ void PromiseBase::set_error() {
         _success = false;
     }
 
+    portEXIT_CRITICAL(&spinlock);
+
     if (!already_finished) {
         _on_promise_finished();
     }
-    portEXIT_CRITICAL(&spinlock);
 }
 
 void PromiseBase::_on_promise_finished() {
@@ -77,15 +78,15 @@ void PromiseBase::on_finished(FutureFinishedCb callback) {
         _on_finished_callbacks.push_back(std::move(callback));
     }
 
+    portEXIT_CRITICAL(&spinlock);
+
     if (finished) {
         VERBOSE(D_PRINTF("Promise (%p): Set on_finished callback for already finished promise\r\n", this));
         callback(_success);
     }
-
-    portEXIT_CRITICAL(&spinlock);
 }
 
-Future<void> PromiseBase::all(const std::vector<FutureBase> &collection) {
+Future<void> PromiseBase::all(const std::vector<Future<void>> &collection) {
     if (collection.empty()) return Future<void>::errored();
     if (collection.size() == 1) return collection[0];
 
@@ -107,7 +108,7 @@ Future<void> PromiseBase::all(const std::vector<FutureBase> &collection) {
     auto result_promise = Promise<void>::create();
     auto count_left = std::make_shared<std::size_t>(collection.size());
 
-    auto finished_cb = [count_left, result_promise](bool success) {
+    auto finished_cb = [count_left = std::move(count_left), result_promise](bool success) {
         VERBOSE(D_PRINTF("Promise::all(): Promise finished, left: %i\r\n", *count_left - 1));
         if (result_promise->finished()) return;
 
@@ -125,7 +126,7 @@ Future<void> PromiseBase::all(const std::vector<FutureBase> &collection) {
     return Future {result_promise};
 }
 
-Future<void> PromiseBase::any(const std::vector<FutureBase> &collection) {
+Future<void> PromiseBase::any(const std::vector<Future<void>> &collection) {
     if (collection.empty()) return Future<void>::errored();
     if (collection.size() == 1) return collection[0];
 
