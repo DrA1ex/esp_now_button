@@ -39,18 +39,18 @@ public:
 
     void tick();
 
-    [[nodiscard]] inline bool initialized() const { return _initialized; }
-    [[nodiscard]] inline bool active() const { return _active; }
-    [[nodiscard]] inline uint8_t blink_count() const { return _blink_count; }
-    [[nodiscard]] inline unsigned long flash_duration() const { return _flash_duration; }
+    [[nodiscard]] bool initialized() const { return _initialized; }
+    [[nodiscard]] bool active() const { return _active; }
+    [[nodiscard]] uint8_t blink_count() const { return _blink_count; }
+    [[nodiscard]] unsigned long flash_duration() const { return _flash_duration; }
 
 
-    [[nodiscard]] inline uint16_t max_brightness() const { return _max_brightness; }
-    inline void set_max_brightness(uint16_t value) { _max_brightness = value; }
-    [[nodiscard]] inline unsigned long blink_active_duration() const { return _blink_active_duration; }
-    inline void set_blink_active_duration(unsigned long duration) { _blink_active_duration = duration; }
-    [[nodiscard]] inline unsigned long blink_wait_duration() const { return _blink_wait_duration; }
-    inline void set_blink_wait_duration(unsigned long duration) { _blink_wait_duration = duration; }
-    [[nodiscard]] inline unsigned long blink_repeat_interval() const { return _blink_repeat_interval; }
-    inline void set_blink_repeat_interval(unsigned long interval) { _blink_repeat_interval = interval; }
+    [[nodiscard]] uint16_t max_brightness() const { return _max_brightness; }
+    void set_max_brightness(uint16_t value) { _max_brightness = value; }
+    [[nodiscard]] unsigned long blink_active_duration() const { return _blink_active_duration; }
+    void set_blink_active_duration(unsigned long duration) { _blink_active_duration = duration; }
+    [[nodiscard]] unsigned long blink_wait_duration() const { return _blink_wait_duration; }
+    void set_blink_wait_duration(unsigned long duration) { _blink_wait_duration = duration; }
+    [[nodiscard]] unsigned long blink_repeat_interval() const { return _blink_repeat_interval; }
+    void set_blink_repeat_interval(unsigned long interval) { _blink_repeat_interval = interval; }
 };

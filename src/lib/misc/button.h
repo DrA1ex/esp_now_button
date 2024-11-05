@@ -58,12 +58,12 @@ public:
 
     void end();
 
-    [[nodiscard]] inline bool idle() const { return !_hold && _click_count == 0; }
-    [[nodiscard]] inline const ButtonState &last_state() const { return _last_state; }
+    [[nodiscard]] bool idle() const { return !_hold && _click_count == 0; }
+    [[nodiscard]] const ButtonState &last_state() const { return _last_state; }
 
-    inline void set_on_click(const ButtonOnClickFn &fn) { _click_handler = fn; }
-    inline void set_on_hold(const ButtonOnHoldFn &fn) { _hold_handler = fn; }
-    inline void set_on_hold_release(const ButtonOnHoldFn &fn) { _hold_release_handler = fn; }
+    void set_on_click(const ButtonOnClickFn &fn) { _click_handler = fn; }
+    void set_on_hold(const ButtonOnHoldFn &fn) { _hold_handler = fn; }
+    void set_on_hold_release(const ButtonOnHoldFn &fn) { _hold_release_handler = fn; }
 
 private:
     [[nodiscard]] bool _read() const;
