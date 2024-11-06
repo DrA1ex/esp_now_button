@@ -5,6 +5,7 @@
 #include <memory>
 #include <vector>
 
+#include "dispatcher.h"
 #include "future.h"
 #include "../debug.h"
 
@@ -13,7 +14,6 @@ class PromiseBase;
 template<typename T> class Future;
 template<typename T> class Promise;
 
-#define xIsInISR() (xPortInIsrContext() || xPortInterruptedFromISRContext())
 
 class PromiseBase {
     volatile bool _finished = false;

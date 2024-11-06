@@ -29,8 +29,27 @@ Future<void> Future<void>::errored() {
     return promise;
 }
 
+Future<void> Future<void>::on_error(std::function<Future()> fn) const {
+    return FutureBase::on_error<void>(*this, [fn=std::move(fn)](auto) {
+        return fn();
+    });
+}
+
+Future<void> Future<void>::on_error(std::function<void()> fn) const {
+    return FutureBase::on_error<void>(*this, [fn=std::move(fn)](auto f) {
+        fn();
+        return f;
+    });
+}
+
 Future<void> Future<void>::on_error(std::function<Future(const Future &)> fn) const {
     return FutureBase::on_error(*this, std::move(fn));
+}
+
+Future<void> Future<void>::finally(std::function<void()> fn) const {
+    return FutureBase::finally<void>(*this, [fn=std::move(fn)](auto) {
+        fn();
+    });
 }
 
 Future<void> Future<void>::finally(std::function<void(const Future &)> fn) const {

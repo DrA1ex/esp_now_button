@@ -33,7 +33,6 @@ protected:
     template<typename T, typename R> static Future<R> then(const Future<T> &future, std::function<R(const Future<T> &)> fn);
 
     template<typename T> static Future<T> on_error(const Future<T> &future, std::function<Future<T>(const Future<T> &)> fn);
-
     template<typename T> static Future<T> finally(const Future<T> &future, std::function<void(const Future<T> &)> fn);
 };
 
@@ -51,7 +50,11 @@ public:
     template<typename R> Future<R> then(std::function<R(const Future &)> fn);
 
     Future on_error(std::function<Future(const Future &)> fn) const;
+    Future on_error(std::function<Future()> fn) const;
+    Future on_error(std::function<void()> fn) const;
+
     Future finally(std::function<void(const Future &)> fn) const;
+    Future finally(std::function<void()> fn) const;
 };
 
 template<>
@@ -68,6 +71,10 @@ public:
     template<typename R> Future<R> then(std::function<R(const Future &)> fn);
 
     Future on_error(std::function<Future(const Future &)> fn) const;
+    Future on_error(std::function<Future()> fn) const;
+    Future on_error(std::function<void()> fn) const;
+
+    Future finally(std::function<void()> fn) const;
     Future finally(std::function<void(const Future &)> fn) const;
 };
 
@@ -139,7 +146,8 @@ template<typename T> Future<T> FutureBase::on_error(const Future<T> &future, std
     return chained_promise;
 }
 
-template<typename T> Future<T> FutureBase::finally(const Future<T> &future, std::function<void(const Future<T> &)> fn) {
+template<typename T>
+Future<T> FutureBase::finally(const Future<T> &future, std::function<void(const Future<T> &)> fn) {
     VERBOSE(D_PRINTF("Promise (%p): Set finally handler\n", future.promise.get()));
 
     auto chained_promise = Promise<T>::create();
@@ -174,6 +182,28 @@ Future<R> Future<T>::then(std::function<R(const Future &)> fn) { return FutureBa
 template<typename T>
 Future<T> Future<T>::on_error(std::function<Future(const Future &)> fn) const {
     return FutureBase::on_error(*this, std::move(fn));
+}
+
+template<typename T>
+Future<T> Future<T>::on_error(std::function<Future()> fn) const {
+    return FutureBase::on_error(*this, [fn=std::move(fn)](auto) {
+        return fn();
+    });
+}
+
+template<typename T>
+Future<T> Future<T>::on_error(std::function<void()> fn) const {
+    return FutureBase::on_error(*this, [fn=std::move(fn)](auto f) {
+        fn();
+        return f;
+    });
+}
+
+template<typename T>
+Future<T> Future<T>::finally(std::function<void()> fn) const {
+    return FutureBase::finally<T>(*this, [fn=std::move(fn)](auto) {
+        fn();
+    });
 }
 
 template<typename T>

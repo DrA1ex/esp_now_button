@@ -4,46 +4,39 @@
 void PromiseBase::set_success() {
     portENTER_CRITICAL(&spinlock);
 
-    bool already_finished = _finished;
-    if (!already_finished) {
+    if (!_finished) {
         _finished = true;
         _success = true;
+
+        _on_promise_finished();
     }
 
     portEXIT_CRITICAL(&spinlock);
-
-    if (!already_finished) {
-        _on_promise_finished();
-    }
 }
 
 void PromiseBase::set_error() {
     portENTER_CRITICAL(&spinlock);
 
-    bool already_finished = _finished;
-    if (!already_finished) {
+    if (!_finished) {
         _finished = true;
         _success = false;
+
+        _on_promise_finished();
     }
 
     portEXIT_CRITICAL(&spinlock);
-
-    if (!already_finished) {
-        _on_promise_finished();
-    }
 }
 
 void PromiseBase::_on_promise_finished() {
-#ifdef DEBUG
-    if (xIsInISR() || _initial_core_id != xPortGetCoreID()) {
-        D_PRINTF("Promise (%p): Finished from different thread or ISR. It may lead to undefined behavior\r\n", this);
-    }
-#endif
-
     VERBOSE(D_PRINTF("Promise (%p): Done\r\n", this));
     if (_on_finished_callbacks.empty()) return;
 
-    for (auto &callback: _on_finished_callbacks) callback(_success);
+    for (auto &callback: _on_finished_callbacks) {
+        Dispatcher::dispatch([=] {
+            callback(_success);
+        });
+    }
+
     _on_finished_callbacks.clear();
 }
 
@@ -51,7 +44,7 @@ void PromiseBase::_on_promise_finished() {
 bool PromiseBase::wait(unsigned long timeout, unsigned long delay_interval) const {
     if (_finished) return true;
 
-    VERBOSE(D_PRINTF("Promise (%p): waiting, timeout: %lu\r\n", this, timeout));
+    VERBOSE(D_PRINTF("Promise (%p): Waiting, timeout: %lu\r\n", this, timeout));
 
     auto start = millis();
     while (!_finished && (timeout == 0 || millis() - start < timeout)) {
@@ -64,26 +57,19 @@ bool PromiseBase::wait(unsigned long timeout, unsigned long delay_interval) cons
 }
 
 void PromiseBase::on_finished(FutureFinishedCb callback) {
-#ifdef DEBUG
-    if (xIsInISR() || _initial_core_id != xPortGetCoreID()) {
-        D_PRINTF("Promise (%p): Set on_finished callback from different thread  or ISR. It may lead to undefined behavior\r\n", this);
-    }
-#endif
-
     portENTER_CRITICAL(&spinlock);
 
-    bool finished = _finished;
-    if (!finished) {
+    if (_finished) {
+        VERBOSE(D_PRINTF("Promise (%p): Set on_finished callback for already finished promise\r\n", this));
+        Dispatcher::dispatch([=, callback=std::move(callback)] {
+            callback(_success);
+        });
+    } else {
         VERBOSE(D_PRINTF("Promise (%p): Add on_finished callback\r\n", this));
         _on_finished_callbacks.push_back(std::move(callback));
     }
 
     portEXIT_CRITICAL(&spinlock);
-
-    if (finished) {
-        VERBOSE(D_PRINTF("Promise (%p): Set on_finished callback for already finished promise\r\n", this));
-        callback(_success);
-    }
 }
 
 Future<void> PromiseBase::all(const std::vector<Future<void>> &collection) {

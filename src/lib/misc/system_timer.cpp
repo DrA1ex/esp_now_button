@@ -1,6 +1,6 @@
 #include "system_timer.h"
 
-bool SystemTimer::task_running = false;
+bool SystemTimer::initialized = false;
 portMUX_TYPE SystemTimer::spinlock = portMUX_INITIALIZER_UNLOCKED;
 SystemTimer::PriorityQueue SystemTimer::timers {};
 
@@ -23,9 +23,9 @@ bool SystemTimer::set_timeout(unsigned long timeout_ms, CallbackType callback) {
 
     portENTER_CRITICAL(&spinlock);
 
-    if (!task_running) {
+    if (!initialized) {
         if (!start_task()) return false;
-        task_running = true;
+        initialized = true;
     }
 
     timers.push({.timeout_at = millis64() + timeout_ms, .callback = std::move(callback)});
@@ -38,9 +38,11 @@ bool SystemTimer::set_timeout(unsigned long timeout_ms, CallbackType callback) {
 }
 
 bool SystemTimer::start_task() {
-    auto ret = xTaskCreatePinnedToCore(timer_task, "TimerCbTask", 4096, nullptr, 1, nullptr, xPortGetCoreID());
+    auto ret = xTaskCreatePinnedToCore(timer_task, "TimerCbTask",
+        SYSTEM_TIMER_STACK_SIZE, nullptr, SYSTEM_TIMER_TASK_PRIORITY, nullptr, xPortGetCoreID());
+
     if (ret != pdPASS) {
-        D_PRINTF("SystemTimer: failed to start task: %x\r\n", pdPASS);
+        D_PRINTF("SystemTimer: Failed to start task: %x\r\n", pdPASS);
         return false;
     }
 
@@ -49,27 +51,40 @@ bool SystemTimer::start_task() {
 
 [[noreturn]] void SystemTimer::timer_task(void *) {
     while (true) {
-        portENTER_CRITICAL(&spinlock);
+        auto begin_micros = esp_timer_get_time();
 
-        auto has_more = false;
-        if (timers.empty() || timers.top().timeout_at > millis64()) {
-            portEXIT_CRITICAL(&spinlock);
-        } else {
-            TimerTaskParams value = std::move(const_cast<TimerTaskParams &>(timers.top()));
-            timers.pop();
+        bool has_pending;
+        do {
+            portENTER_CRITICAL(&spinlock);
+            has_pending = has_pending_task();
 
-            VERBOSE(D_PRINTF("SystemTimer: remove task. Total: %i\r\n", timers.size()));
+            if (has_pending) {
+                TimerTaskParams value = std::move(const_cast<TimerTaskParams &>(timers.top()));
+                timers.pop();
+                VERBOSE(D_PRINTF("SystemTimer: Remove task. Left: %lu\r\n", timers.size()));
 
-            has_more = !timers.empty();
-            portEXIT_CRITICAL(&spinlock);
+                has_pending = has_pending_task();
+                portEXIT_CRITICAL(&spinlock);
 
-            VERBOSE(D_PRINTF("SystemTimer: triggered at %llu (late for %llu ms)\r\n", value.timeout_at, millis64() - value.timeout_at));
+                VERBOSE(D_PRINTF("SystemTimer: Triggered at %llu (late for %llu ms)\r\n", value.timeout_at, millis64() - value.timeout_at));
+                value.callback();
+            } else {
+                portEXIT_CRITICAL(&spinlock);
+            }
 
-            value.callback();
-        }
+            if (has_pending && esp_timer_get_time() - begin_micros > SYSTEM_TIMER_TASK_RUNNING_TIMEOUT_MICRO) {
+                vTaskDelay(0);
+                VERBOSE(D_PRINT("SystemTimer: Too long task execution. Wait before continue"));
+                begin_micros = esp_timer_get_time();
+            }
+        } while (has_pending);
 
-        if (!has_more) ::delay(1);
+        delayMicroseconds(SYSTEM_TIMER_DELAY_INTERVAL_MICRO);
     }
 
     vTaskDelete(nullptr);
+}
+
+bool SystemTimer::has_pending_task() {
+    return !timers.empty() && timers.top().timeout_at < millis64();
 }
