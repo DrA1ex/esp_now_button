@@ -7,12 +7,16 @@ constexpr uint8_t PIN_BUTTON2 = 1;
 
 constexpr uint8_t PIN_LED = 3;
 
-constexpr unsigned long SEND_TIMEOUT = 3000;
+
+constexpr unsigned long DISCOVERY_TIMEOUT = 5000;
+constexpr unsigned long SEND_TIMEOUT = 500;
 constexpr unsigned long BUTTON_WAIT_TIMEOUT = 600;
 
 constexpr unsigned long DELAY_AMOUNT = 10;
 
 constexpr unsigned long LED_HOLDING_BLINK_INTERVAL = 200;
+
+constexpr uint8_t SEND_ERROR_BEFORE_RESET = 3;
 
 #define BTN_SILENCE_INTERVAL                    (5u)
 #define BTN_HOLD_INTERVAL                       (600u)

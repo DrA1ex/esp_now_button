@@ -5,7 +5,7 @@
 #include <lib/misc/led.h>
 #include <lib/network/now_io.h>
 
-enum class ApplicationState {
+enum class ApplicationState: uint8_t {
     BUTTON_WAIT,
 
     NETWORK_INITIALIZATION,
@@ -20,9 +20,20 @@ enum class ApplicationState {
     END
 };
 
+enum class CommandState: uint8_t {
+    UNKNOWN,
+
+    SUCCESS,
+    NOTHING_TO_SEND,
+
+    HUB_MISSING,
+    SEND_TIMEOUT,
+    SEND_ERROR
+};
+
 ApplicationState state = ApplicationState::BUTTON_WAIT;
+CommandState command_state = CommandState::UNKNOWN;
 unsigned long initialized_time = 0;
-bool command_success = false;
 
 Led led(PIN_LED);
 Button button1(PIN_BUTTON1, true, true);
@@ -47,7 +58,7 @@ void setup() {
 
     led.flash();
 
-    if (error_count >= 3) {
+    if (error_count >= SEND_ERROR_BEFORE_RESET) {
         hub_addr_present = false;
         memset(hub_addr, 0, sizeof(hub_addr));
         wifi_channel = 0;
@@ -100,9 +111,9 @@ void state_machine() {
         case ApplicationState::DISCOVERY: {
             if (!hub_addr_present) {
                 auto discovery_future = now.discover_hub(hub_addr);
-                if (!discovery_future.wait(5000) || !discovery_future.success()) {
+                if (!discovery_future.wait(DISCOVERY_TIMEOUT) || !discovery_future.success()) {
                     D_PRINT("*** Unable to find HUB. Exit...");
-                    command_success = false;
+                    command_state = CommandState::HUB_MISSING;
                     state = ApplicationState::FINISHED;
                     break;
                 }
@@ -121,7 +132,7 @@ void state_machine() {
                 D_PRINT("Nothing to send");
 
                 state = ApplicationState::FINISHED;
-                command_success = true;
+                command_state = CommandState::NOTHING_TO_SEND;
                 break;
             }
 
@@ -137,15 +148,15 @@ void state_machine() {
             };
 
             auto send_future = now.send(hub_addr, (uint8_t) PacketType::BUTTON, events);
-            if (!send_future.wait(500) || !send_future.success()) {
-                D_PRINT("Failed to send message");
-                command_success = false;
+            if (!send_future.wait(SEND_TIMEOUT) || !send_future.success()) {
+                D_PRINTF("Failed to send message: %s\r\n", send_future.finished() ? "error" : "timeout");
+                command_state = send_future.finished() ? CommandState::SEND_ERROR : CommandState::SEND_TIMEOUT;
                 ++error_count;
                 state = ApplicationState::FINISHED;
                 break;
             }
 
-            command_success = true;
+            command_state = CommandState::SUCCESS;
             error_count = 0;
             state = ApplicationState::FINISHED;
             break;
@@ -161,12 +172,31 @@ void state_machine() {
             state = ApplicationState::RESULT_INDICATION;
             break;
 
-        case ApplicationState::RESULT_INDICATION:
+        case ApplicationState::RESULT_INDICATION: {
             led.turn_off();
 
-            if (!command_success) {
+            bool need_indication = false;
+            uint8_t blink_count = 0;
+            switch (command_state) {
+                case CommandState::HUB_MISSING:
+                    blink_count = 5;
+                    need_indication = true;
+                    break;
+                case CommandState::SEND_TIMEOUT:
+                    blink_count = 4;
+                    need_indication = true;
+                    break;
+                case CommandState::SEND_ERROR:
+                    blink_count = 3;
+                    need_indication = true;
+                    break;
+
+                default:;
+            }
+
+            if (need_indication) {
                 delay(led.blink_repeat_interval());
-                led.blink(3, false);
+                led.blink(blink_count, false);
 
                 while (led.active()) {
                     led.tick();
@@ -176,11 +206,12 @@ void state_machine() {
 
             state = ApplicationState::TURNING_OFF;
             break;
+        }
 
         case ApplicationState::TURNING_OFF:
             led.turn_off();
 
-            D_PRINTF("Finished with result: %s", command_success ? "ok" : "error");
+            D_PRINTF("Finished with result: %u", command_state);
             state = ApplicationState::END;
 
             esp_deep_sleep_enable_gpio_wakeup((1 << PIN_BUTTON1) | (1 << PIN_BUTTON2), ESP_GPIO_WAKEUP_GPIO_HIGH);

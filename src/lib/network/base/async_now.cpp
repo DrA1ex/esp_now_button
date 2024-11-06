@@ -9,7 +9,7 @@ uint64_t mac_to_key(const uint8_t *mac_addr) {
     return mac_addr_key;
 }
 
-AsyncEspNow AsyncEspNow::_instance{};
+AsyncEspNow AsyncEspNow::_instance {};
 
 bool AsyncEspNow::begin() {
     if (_initialized) return false;
@@ -54,7 +54,7 @@ Future<void> AsyncEspNow::send(const uint8_t *mac_addr, const uint8_t *data, uin
     auto promise = std::make_shared<Promise<void>>();
     _send_order[mac_to_key(mac_addr)].push(promise);
 
-    return Future{promise};
+    return Future {promise};
 }
 
 bool AsyncEspNow::is_peer_exists(const uint8_t *mac_addr) const {
@@ -65,7 +65,7 @@ bool AsyncEspNow::register_peer(const uint8_t *mac_addr, uint8_t channel) {
     if (!_initialized) return false;
     if (esp_now_is_peer_exist(mac_addr)) return true;
 
-    esp_now_peer_info peer{};
+    esp_now_peer_info peer {};
     peer.channel = channel;
     peer.encrypt = false;
     memcpy(peer.peer_addr, mac_addr, ESP_NOW_ETH_ALEN);
@@ -136,7 +136,7 @@ void AsyncEspNow::_on_sent(const uint8_t *mac_addr, esp_now_send_status_t status
 
         promise->set_success();
     } else {
-        D_WRITE("AsyncEspNow: error while sending data. Destination: ");
+        D_PRINTF("AsyncEspNow: error while sending data: %i. Destination: ", status);
         D_PRINT_HEX(mac_addr, ESP_NOW_ETH_ALEN);
 
         promise->set_error();
