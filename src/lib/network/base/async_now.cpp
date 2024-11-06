@@ -36,6 +36,15 @@ bool AsyncEspNow::begin() {
     return true;
 }
 
+void AsyncEspNow::end() {
+    if (!_initialized) return;
+
+    set_on_packet_cb(nullptr);
+    _initialized = false;
+
+    esp_now_deinit();
+}
+
 Future<void> AsyncEspNow::send(const uint8_t *mac_addr, const uint8_t *data, uint8_t size) {
     bool success = _initialized;
     success = success && register_peer(mac_addr);
@@ -155,8 +164,8 @@ void AsyncEspNow::_on_receive(const uint8_t *mac_addr, const uint8_t *data, int 
     D_WRITE("\t- Sender: ");
     D_PRINT_HEX(mac_addr, ESP_NOW_ETH_ALEN);
     D_PRINTF("\t- Size: %i\r\n", data_len);
-    D_WRITE("\t- Data: ");
-    D_PRINT_HEX(data, data_len);
+    VERBOSE(D_WRITE("\t- Data: "));
+    VERBOSE(D_PRINT_HEX(data, data_len));
 
     auto &self = instance();
     if (self._on_packet_cb) {

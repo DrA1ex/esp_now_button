@@ -35,6 +35,7 @@ public:
     AsyncEspNow &operator=(AsyncEspNow const &) = delete;
 
     bool begin();
+    void end();
 
     Future<void> send(const uint8_t *mac_addr, const uint8_t *data, uint8_t size);
 

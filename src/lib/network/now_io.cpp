@@ -2,13 +2,17 @@
 
 #include <lib/misc/system_timer.h>
 
-NowIo NowIo::_instance{};
+NowIo NowIo::_instance {};
 
 bool NowIo::begin() {
     if (!_interaction.begin()) return false;
 
     _interaction.set_on_message_cb([this](auto message) { _on_message_received(message); });
     return true;
+}
+
+void NowIo::end() {
+    _interaction.end();
 }
 
 Future<void> NowIo::send(const uint8_t *mac_addr, uint8_t type) {
@@ -114,7 +118,7 @@ Future<uint8_t> NowIo::_discover_hub_channel(uint8_t channel, uint8_t *out_mac_a
 
 
 NowPacket NowPacket::parse(const EspNowMessage &message) {
-    NowPacket result{};
+    NowPacket result {};
 
     auto *header = (NowPacketHeader *) message.data.get();
     result.id = message.id;

@@ -15,6 +15,15 @@ bool AsyncEspNowInteraction::begin() {
     return true;
 }
 
+void AsyncEspNowInteraction::end() {
+    if (!_initialized) return;
+
+    set_on_message_cb(nullptr);
+    _initialized = false;
+
+    _async_now.end();
+}
+
 Future<EspNowSendResponse> AsyncEspNowInteraction::send(const uint8_t *mac_addr, const char *str) {
     return send(mac_addr, (uint8_t *) str, strlen(str));
 }

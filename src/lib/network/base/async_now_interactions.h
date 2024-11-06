@@ -60,6 +60,7 @@ public:
     AsyncEspNowInteraction &operator=(AsyncEspNowInteraction const &) = delete;
 
     bool begin();
+    void end();
 
     template<typename T, typename = std::enable_if_t<!std::is_pointer_v<T> && (std::is_scalar_v<T> || std::is_standard_layout_v<T>)>>
     Future<EspNowSendResponse> send(const uint8_t *mac_addr, const T &value);
