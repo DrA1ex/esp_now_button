@@ -4,27 +4,33 @@
 void PromiseBase::set_success() {
     portENTER_CRITICAL(&spinlock);
 
-    if (!_finished) {
-        _finished = true;
-        _success = true;
-
-        _on_promise_finished();
+    if (_finished) {
+        D_PRINTF("Promise (%p): Trying to resolve already resolved promise\r\n", this);
+        portEXIT_CRITICAL(&spinlock);
+        return;
     }
 
+    _finished = true;
+    _success = true;
+
     portEXIT_CRITICAL(&spinlock);
+    _on_promise_finished();
 }
 
 void PromiseBase::set_error() {
     portENTER_CRITICAL(&spinlock);
 
-    if (!_finished) {
-        _finished = true;
-        _success = false;
-
-        _on_promise_finished();
+    if (_finished) {
+        D_PRINTF("Promise (%p): Trying to reject already resolved promise\r\n", this);
+        portEXIT_CRITICAL(&spinlock);
+        return;
     }
 
+    _finished = true;
+    _success = false;
+
     portEXIT_CRITICAL(&spinlock);
+    _on_promise_finished();
 }
 
 void PromiseBase::_on_promise_finished() {
@@ -58,18 +64,19 @@ bool PromiseBase::wait(unsigned long timeout, unsigned long delay_interval) cons
 
 void PromiseBase::on_finished(FutureFinishedCb callback) {
     portENTER_CRITICAL(&spinlock);
-
     if (_finished) {
+        portEXIT_CRITICAL(&spinlock);
+
         VERBOSE(D_PRINTF("Promise (%p): Set on_finished callback for already finished promise\r\n", this));
         Dispatcher::dispatch([=, callback=std::move(callback)] {
             callback(_success);
         });
     } else {
-        VERBOSE(D_PRINTF("Promise (%p): Add on_finished callback\r\n", this));
         _on_finished_callbacks.push_back(std::move(callback));
-    }
+        portEXIT_CRITICAL(&spinlock);
 
-    portEXIT_CRITICAL(&spinlock);
+        VERBOSE(D_PRINTF("Promise (%p): Add on_finished callback\r\n", this));
+    }
 }
 
 Future<void> PromiseBase::all(const std::vector<Future<void>> &collection) {
