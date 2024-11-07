@@ -1,12 +1,16 @@
 #include "dispatcher.h"
 
+#include <esp_task_wdt.h>
 #include <lib/debug.h>
 
 #define xIsInISR() (xPortInIsrContext() || xPortInterruptedFromISRContext())
 
 bool Dispatcher::initialized = false;
-portMUX_TYPE Dispatcher::spinlock = portMUX_INITIALIZER_UNLOCKED;
+uint64_t Dispatcher::begin_processing_micros = 0;
+int Dispatcher::processed_tasks = 0;
 TaskHandle_t Dispatcher::task_handle = nullptr;
+
+portMUX_TYPE Dispatcher::spinlock = portMUX_INITIALIZER_UNLOCKED;
 std::queue<Dispatcher::DispatchFn> Dispatcher::dispatched {};
 
 bool Dispatcher::begin() {
@@ -23,6 +27,8 @@ bool Dispatcher::begin() {
 
         if (ret != pdPASS) {
             D_PRINTF("Dispatcher: Failed to start task: %x\r\n", pdPASS);
+
+            portEXIT_CRITICAL(&spinlock);
             return false;
         }
 
@@ -31,7 +37,6 @@ bool Dispatcher::begin() {
     }
 
     portEXIT_CRITICAL(&spinlock);
-
     return true;
 }
 
@@ -46,8 +51,8 @@ bool Dispatcher::dispatch(DispatchFn fn) {
         D_PRINT("Dispatcher: Failed to notify dispatcher task");
         dispatched.pop();
     }
-    portEXIT_CRITICAL(&spinlock);
 
+    portEXIT_CRITICAL(&spinlock);
     return success;
 }
 
@@ -63,32 +68,47 @@ bool Dispatcher::notify() {
     while (true) {
         VERBOSE(D_PRINT("Dispatcher: Wait for events..."));
         xTaskNotifyWaitIndexed(0, 0x00, ULONG_MAX, nullptr, portMAX_DELAY);
+        VERBOSE(D_PRINT("Dispatcher: Received event."));
 
-        auto begin_micros = esp_timer_get_time();
+        begin_processing_micros = esp_timer_get_time();
+        processed_tasks = 0;
 
-        bool empty;
+        bool has_more;
         do {
-            portENTER_CRITICAL(&spinlock);
-            empty = dispatched.empty();
+            has_more = process_pending_tasks();
+            if (has_more) delay_if_too_long();
+        } while (has_more);
+    }
+}
 
-            if (!empty) {
-                auto cb = std::move(dispatched.front());
-                dispatched.pop();
+bool Dispatcher::process_pending_tasks() {
+    portENTER_CRITICAL(&spinlock);
 
-                empty = dispatched.empty();
-                portEXIT_CRITICAL(&spinlock);
+    bool empty = dispatched.empty();
+    if (empty) {
+        portEXIT_CRITICAL(&spinlock);
+        return false;
+    }
 
-                VERBOSE(D_PRINTF("Dispatcher: Running dispatched function. Left: %lu\r\n", dispatched.size()));
-                cb();
-            } else {
-                portEXIT_CRITICAL(&spinlock);
-            }
+    auto callback = std::move(dispatched.front());
+    dispatched.pop();
 
-            if (!empty && esp_timer_get_time() - begin_micros > DISPATCHER_TASK_RUNNING_TIMEOUT_MICRO) {
-                vTaskDelay(0);
-                VERBOSE(D_PRINT("Dispatcher: Too long task execution. Wait before continue"));
-                begin_micros = esp_timer_get_time();
-            }
-        } while (!empty);
+    empty = dispatched.empty();
+    portEXIT_CRITICAL(&spinlock);
+
+    VERBOSE(D_PRINTF("Dispatcher: Running dispatched function. Left: %lu\r\n", dispatched.size()));
+    callback();
+
+    return !empty;
+}
+
+void Dispatcher::delay_if_too_long() {
+    if (esp_timer_get_time() - begin_processing_micros > DISPATCHER_TASK_RUNNING_TIMEOUT_MICRO) {
+        vTaskDelay(0);
+
+        VERBOSE(D_PRINT("Dispatcher: Too long task execution. Wait before continue"));
+        begin_processing_micros = esp_timer_get_time();
+    } else {
+        esp_task_wdt_reset();
     }
 }

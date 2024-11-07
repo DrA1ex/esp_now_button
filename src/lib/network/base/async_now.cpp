@@ -14,6 +14,11 @@ AsyncEspNow AsyncEspNow::_instance {};
 bool AsyncEspNow::begin() {
     if (_initialized) return false;
 
+    if (!Dispatcher::begin()) {
+        D_PRINT("AsyncEspNow: Unable to initialized Dispatcher");
+        return false;
+    }
+
     if (WiFiClass::getMode() == WIFI_MODE_NULL) WiFiClass::mode(WIFI_MODE_STA);
 
     auto ret = esp_now_init();

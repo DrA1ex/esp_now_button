@@ -17,22 +17,31 @@
 #endif
 
 class Dispatcher {
+    using PrivateDispatchFn = std::function<void()>;
+
     static bool initialized;
-    static portMUX_TYPE spinlock;
+    static uint64_t begin_processing_micros;
+    static int processed_tasks;
     static TaskHandle_t task_handle;
 
+    static portMUX_TYPE spinlock;
+    static std::queue<PrivateDispatchFn> dispatched;
+
 public:
-    typedef std::function<void()> DispatchFn;
+    using DispatchFn = PrivateDispatchFn;
+
     Dispatcher() = delete;
 
     static bool begin();
     static bool dispatch(DispatchFn fn);
 
 private:
-    static std::queue<DispatchFn> dispatched;
-
     static bool notify_from_isr();
     static bool notify();
 
     static void dispatcher_task(void *);
+
+    static bool process_pending_tasks();
+    static bool has_pending_task();
+    static void delay_if_too_long();
 };

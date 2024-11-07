@@ -107,7 +107,10 @@ Future<void> PromiseBase::all(const std::vector<Future<void>> &collection) {
         }
     };
 
-    for (auto &future: collection) { future.on_finished(finished_cb); }
+    for (auto &future: collection) {
+        future.on_finished(finished_cb);
+        VERBOSE(delay(0)); // To avoid WDT when verbose logging
+    }
 
     return Future {result_promise};
 }

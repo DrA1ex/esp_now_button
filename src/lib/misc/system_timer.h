@@ -23,13 +23,15 @@
 #endif
 
 class SystemTimer {
-    struct TimerTaskParams;
+    struct TimerTask;
 
-    static portMUX_TYPE spinlock;
     static bool initialized;
+    static uint64_t begin_processing_micros;
+    static int processed_tasks;
 
-    typedef std::priority_queue<TimerTaskParams, std::vector<TimerTaskParams>, std::greater<>> PriorityQueue;
+    typedef std::priority_queue<TimerTask, std::vector<TimerTask>, std::greater<>> PriorityQueue;
     static PriorityQueue timers;
+    static portMUX_TYPE spinlock;
 
 public:
     typedef std::function<void()> CallbackType;
@@ -39,17 +41,19 @@ public:
     static bool set_timeout(unsigned long timeout_ms, CallbackType callback);
 
 private:
-    struct TimerTaskParams {
+    struct TimerTask {
         uint64_t timeout_at;
         CallbackType callback;
 
-        bool operator>(const TimerTaskParams &other) const { return timeout_at > other.timeout_at; }
+        bool operator>(const TimerTask &other) const { return timeout_at > other.timeout_at; }
     };
 
     static bool start_task();
     static void timer_task(void *arg);
 
+    static bool process_pending_tasks();
     static bool has_pending_task();
+    static void delay_if_too_long();
 
     // Actually it's ~ 53 bits, but it doesn't really matter...
     static uint64_t millis64() { return esp_timer_get_time() / 1000; }
