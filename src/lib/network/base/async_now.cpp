@@ -51,12 +51,13 @@ void AsyncEspNow::end() {
 }
 
 Future<void> AsyncEspNow::send(const uint8_t *mac_addr, const uint8_t *data, uint8_t size) {
-    bool success = _initialized;
-    success = success && register_peer(mac_addr);
-    success = success && esp_now_send(mac_addr, data, size) == ESP_OK;
+    if (!_initialized) {
+        D_PRINT("AsyncEspNow: Not initialized");
+        return Future<void>::errored();
+    }
 
-    if (!success) {
-        D_PRINT("AsyncEspNow: failed to send packet");
+    if (!register_peer(mac_addr)) {
+        D_PRINT("AsyncEspNow: Failed to register peer");
         return Future<void>::errored();
     }
 
@@ -66,7 +67,16 @@ Future<void> AsyncEspNow::send(const uint8_t *mac_addr, const uint8_t *data, uin
     D_PRINTF("\t- Size: %i\r\n", size);
 
     auto promise = std::make_shared<Promise<void>>();
-    _send_order[mac_to_key(mac_addr)].push(promise);
+
+    auto send_key = mac_to_key(mac_addr);
+    _send_order[send_key].push(promise);
+
+    if (esp_now_send(mac_addr, data, size) != ESP_OK) {
+        D_PRINT("AsyncEspNow: Failed to register peer");
+
+        _send_order[send_key].pop();
+        promise->set_error();
+    }
 
     return Future {promise};
 }
@@ -86,11 +96,11 @@ bool AsyncEspNow::register_peer(const uint8_t *mac_addr, uint8_t channel) {
 
     auto ret = esp_now_add_peer(&peer);
     if (ret != ESP_OK) {
-        D_PRINTF("AsyncEspNow: unable to register peer: %i\r\n", ret);
+        D_PRINTF("AsyncEspNow: Unable to register peer: %i\r\n", ret);
         return false;
     }
 
-    D_WRITE("AsyncEspNow: register new peer ");
+    D_WRITE("AsyncEspNow: Register new peer ");
     D_PRINT_HEX(mac_addr, ESP_NOW_ETH_ALEN);
 
     uint64_t mac_addr_key = mac_to_key(mac_addr);
@@ -114,8 +124,7 @@ bool AsyncEspNow::unregister_peer(const uint8_t *mac_addr) {
     return esp_now_del_peer(mac_addr) == ESP_OK;
 }
 
-bool AsyncEspNow::change_channel(uint8_t channel) {
-    // NOLINT(*-make-member-function-const)
+bool AsyncEspNow::change_channel(uint8_t channel) { // NOLINT(*-make-member-function-const)
     if (!_initialized) return false;
 
     D_PRINTF("AsyncEspNow: Change channel to: %i\r\n", channel + 1);
@@ -138,19 +147,19 @@ void AsyncEspNow::_on_sent(const uint8_t *mac_addr, esp_now_send_status_t status
         return;
     }
 
-    VERBOSE(D_PRINT("AsyncEspNow: received sent event"));
+    VERBOSE(D_PRINT("AsyncEspNow: Received sent event"));
 
     auto &queue = it->second;
     const auto promise = queue.front();
     queue.pop();
 
     if (status == ESP_NOW_SEND_SUCCESS) {
-        VERBOSE(D_WRITE("AsyncEspNow: send confirmed "));
+        VERBOSE(D_WRITE("AsyncEspNow: Send confirmed "));
         VERBOSE(D_PRINT_HEX(mac_addr, ESP_NOW_ETH_ALEN));
 
         promise->set_success();
     } else {
-        D_PRINTF("AsyncEspNow: error while sending data: %i. Destination: ", status);
+        D_PRINTF("AsyncEspNow: Error while sending data: %i. Destination: ", status);
         D_PRINT_HEX(mac_addr, ESP_NOW_ETH_ALEN);
 
         promise->set_error();
@@ -165,7 +174,7 @@ void AsyncEspNow::_on_receive(const uint8_t *mac_addr, const uint8_t *data, int 
     memcpy(packet.data.get(), data, data_len);
     memcpy(packet.mac_addr, mac_addr, sizeof(packet.mac_addr));
 
-    D_PRINT("AsyncEspNow: received packet");
+    D_PRINT("AsyncEspNow: Received packet");
     D_WRITE("\t- Sender: ");
     D_PRINT_HEX(mac_addr, ESP_NOW_ETH_ALEN);
     D_PRINTF("\t- Size: %i\r\n", data_len);

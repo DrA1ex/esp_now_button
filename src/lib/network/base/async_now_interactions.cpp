@@ -116,7 +116,7 @@ Future<EspNowSendResponse> AsyncEspNowInteraction::_send_impl(
     }
 
     return PromiseBase::all(futures).then<EspNowSendResponse>([id](const FutureBase &) {
-        return Future<EspNowSendResponse>::successful({.id = id});
+        return EspNowSendResponse {.id = id};
     });
 }
 
