@@ -52,6 +52,7 @@ void state_machine();
 void setup() {
     led.set_blink_repeat_interval(LED_HOLDING_BLINK_INTERVAL);
     led.begin();
+    led.set_brightness(0xA0);
 
     button1.begin(INPUT_PULLDOWN);
     button2.begin(INPUT_PULLDOWN);
