@@ -33,6 +33,8 @@ struct ButtonState {
 };
 
 class Button {
+    bool _initialized = false;
+
     volatile bool _hold = false;
     volatile int _click_count = 0;
 
@@ -52,11 +54,17 @@ class Button {
 
 public:
     explicit Button(uint8_t pin, bool high_state = true, bool used_for_wakeup = false);
+    ~Button() noexcept;
+
+    Button(const Button &) = delete;
+    Button &operator=(const Button &) = delete;
+    Button(Button &&) = delete;
+    Button &operator=(Button &&) = delete;
 
     void begin(uint8_t mode = INPUT);
     void handle();
 
-    void end();
+    void end() noexcept;
 
     [[nodiscard]] bool idle() const { return !_hold && _click_count == 0; }
     [[nodiscard]] const ButtonState &last_state() const { return _last_state; }

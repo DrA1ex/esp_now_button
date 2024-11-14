@@ -3,6 +3,7 @@
 
 #include <lib/misc/button.h>
 #include <lib/misc/led.h>
+#include <lib/misc/vector.h>
 #include <lib/network/now_io.h>
 
 enum class ApplicationState: uint8_t {
@@ -36,8 +37,7 @@ CommandState command_state = CommandState::UNKNOWN;
 unsigned long initialized_time = 0;
 
 Led led(PIN_LED);
-Button button1(PIN_BUTTON1, true, true);
-Button button2(PIN_BUTTON2, true, true);
+Vector<Button> buttons;
 
 auto &now = NowIo::instance();
 
@@ -50,16 +50,23 @@ void initialize_debugger();
 void state_machine();
 
 void setup() {
+    VERBOSE(initialize_debugger());
+
+    buttons.reserve(BUTTON_COUNT);
+    for (int i = 0; i < BUTTON_COUNT; ++i) {
+        auto &button = buttons.emplace(BUTTON_PINS[i], BTN_HIGH_STATE, true);
+        button.begin(BTN_MODE);
+    }
+
     led.set_blink_repeat_interval(LED_HOLDING_BLINK_INTERVAL);
     led.begin();
+
     led.set_brightness(0xA0);
-
-    button1.begin(INPUT_PULLDOWN);
-    button2.begin(INPUT_PULLDOWN);
-
     led.flash();
 
     if (error_count >= SEND_ERROR_BEFORE_RESET) {
+        D_PRINT("Too many sending errors. Reseting saved HUB...");
+
         hub_addr_present = false;
         memset(hub_addr, 0, sizeof(hub_addr));
         wifi_channel = 0;
@@ -77,8 +84,7 @@ void loop() {
         state_machine();
     } while (prev_state != state);
 
-    button1.handle();
-    button2.handle();
+    for (auto &button: buttons) button.handle();
     led.tick();
 
     delay(DELAY_AMOUNT);
@@ -86,11 +92,13 @@ void loop() {
 
 void state_machine() {
     switch (state) {
-        case ApplicationState::BUTTON_WAIT:
-            if (button1.idle() && button2.idle() && millis() - initialized_time > BUTTON_WAIT_TIMEOUT) {
+        case ApplicationState::BUTTON_WAIT: {
+            bool all_idle = std::all_of(buttons.begin(), buttons.end(), [](auto &b) { return b.idle(); });
+            if (all_idle && millis() - initialized_time > BUTTON_WAIT_TIMEOUT) {
                 state = ApplicationState::NETWORK_INITIALIZATION;
             }
             break;
+        }
 
         case ApplicationState::NETWORK_INITIALIZATION:
 #ifdef DEBUG
@@ -129,7 +137,10 @@ void state_machine() {
         }
 
         case ApplicationState::DATA_SENDING: {
-            if (button1.last_state().click_count == 0 && button2.last_state().click_count == 0) {
+            bool nothing_to_send = std::all_of(buttons.begin(), buttons.end(),
+                [](auto &b) { return b.last_state().click_count == 0; });
+
+            if (nothing_to_send) {
                 D_PRINT("Nothing to send");
 
                 state = ApplicationState::FINISHED;
@@ -137,18 +148,18 @@ void state_machine() {
                 break;
             }
 
-            ButtonEvent events[] = {
-                {
-                    .event_type = button1.last_state().hold ? ButtonEventType::HOLD : ButtonEventType::CLICKED,
-                    .click_count = button1.last_state().click_count
-                },
-                {
-                    .event_type = button2.last_state().hold ? ButtonEventType::HOLD : ButtonEventType::CLICKED,
-                    .click_count = button2.last_state().click_count
-                }
-            };
+            std::vector<ButtonEvent> button_events(BUTTON_COUNT);
+            for (int i = 0; i < BUTTON_COUNT; ++i) {
+                auto &btn_state = buttons[i].last_state();
+                button_events[i] = {
+                    .event_type = btn_state.hold ? ButtonEventType::HOLD : ButtonEventType::CLICKED,
+                    .click_count = btn_state.click_count
+                };
 
-            auto send_future = now.send(hub_addr, (uint8_t) PacketType::BUTTON, events);
+                D_PRINTF("Button #%i: Type: %s, Count %i\r\n", i, btn_state.hold ? "Hold" : "Click", btn_state.click_count);
+            }
+
+            auto send_future = now.send(hub_addr, (uint8_t) PacketType::BUTTON, button_events);
             if (!send_future.wait(SEND_TIMEOUT) || !send_future.success()) {
                 D_PRINTF("Failed to send message: %s\r\n", send_future.finished() ? "error" : "timeout");
                 command_state = send_future.finished() ? CommandState::SEND_ERROR : CommandState::SEND_TIMEOUT;
@@ -163,15 +174,16 @@ void state_machine() {
             break;
         }
 
-        case ApplicationState::FINISHED:
-            if (digitalRead(PIN_BUTTON1) || digitalRead(PIN_BUTTON2)) {
-                break;
-            }
+        case ApplicationState::FINISHED: {
+            auto buttons_not_idle = std::any_of(BUTTON_PINS, BUTTON_PINS + BUTTON_COUNT,
+                [](auto pin) { return digitalRead(pin) == HIGH; });
 
-            button1.end();
-            button2.end();
+            if (buttons_not_idle) break;
+
+            for (auto &button: buttons) button.end();
             state = ApplicationState::RESULT_INDICATION;
             break;
+        }
 
         case ApplicationState::RESULT_INDICATION: {
             led.turn_off();
@@ -209,15 +221,19 @@ void state_machine() {
             break;
         }
 
-        case ApplicationState::TURNING_OFF:
+        case ApplicationState::TURNING_OFF: {
             led.turn_off();
 
             D_PRINTF("Finished with result: %u", command_state);
             state = ApplicationState::END;
 
-            esp_deep_sleep_enable_gpio_wakeup((1 << PIN_BUTTON1) | (1 << PIN_BUTTON2), ESP_GPIO_WAKEUP_GPIO_HIGH);
+            uint64_t button_mask = 0;
+            for (int i = 0; i < BUTTON_COUNT; ++i) button_mask |= 1 << BUTTON_PINS[i];
+
+            esp_deep_sleep_enable_gpio_wakeup(button_mask, ESP_GPIO_WAKEUP_GPIO_HIGH);
             esp_deep_sleep_start();
             break;
+        }
 
         case ApplicationState::END:
             D_PRINT("You shouldn't be here 0_0");
@@ -226,7 +242,11 @@ void state_machine() {
 }
 
 void initialize_debugger() {
+    static bool debugger_initialized = false;
+    if (debugger_initialized) return;
+
     Serial.begin(115200);
+    debugger_initialized = true;
 
     auto start_t = millis();
     while (!Serial && millis() - start_t < 15000ul) delay(100);
