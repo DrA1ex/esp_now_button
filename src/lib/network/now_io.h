@@ -1,6 +1,8 @@
 #pragma once
 
-#include "base/async_now_interactions.h"
+#include <lib/network/base/async_now_interactions.h>
+#include <lib/misc/vector.h>
+
 
 enum class SpecialPacketTypes: uint8_t {
     PING      = 0xf0,
@@ -49,6 +51,8 @@ public:
 
     template<typename T, typename = std::enable_if_t<!std::is_pointer_v<T> && std::is_standard_layout_v<T>>>
     Future<void> send(const uint8_t *mac_addr, uint8_t type, const std::vector<T> &items);
+    template<typename T, typename = std::enable_if_t<!std::is_pointer_v<T> && std::is_standard_layout_v<T>>>
+    Future<void> send(const uint8_t *mac_addr, uint8_t type, const Vector<T> &items);
     template<typename T, size_t Count, typename = std::enable_if_t<!std::is_pointer_v<T> && std::is_standard_layout_v<T>>>
     Future<void> send(const uint8_t *mac_addr, uint8_t type, const T (&items)[Count]);
     template<typename T, typename = std::enable_if_t<!std::is_pointer_v<T> && std::is_standard_layout_v<T>>>
@@ -58,6 +62,8 @@ public:
 
     template<typename T, typename = std::enable_if_t<!std::is_pointer_v<T> && std::is_standard_layout_v<T>>>
     Future<NowPacket> request(const uint8_t *mac_addr, uint8_t type, const std::vector<T> &items);
+    template<typename T, typename = std::enable_if_t<!std::is_pointer_v<T> && std::is_standard_layout_v<T>>>
+    Future<NowPacket> request(const uint8_t *mac_addr, uint8_t type, const Vector<T> &items);
     template<typename T, size_t Count, typename = std::enable_if_t<!std::is_pointer_v<T> && std::is_standard_layout_v<T>>>
     Future<NowPacket> request(const uint8_t *mac_addr, uint8_t type, const T (&items)[Count]);
     template<typename T, typename = std::enable_if_t<!std::is_pointer_v<T> && std::is_standard_layout_v<T>>>
@@ -67,6 +73,8 @@ public:
 
     template<typename T, typename = std::enable_if_t<!std::is_pointer_v<T> && std::is_standard_layout_v<T>>>
     Future<void> respond(uint8_t id, const uint8_t *mac_addr, uint8_t type, const std::vector<T> &items);
+    template<typename T, typename = std::enable_if_t<!std::is_pointer_v<T> && std::is_standard_layout_v<T>>>
+    Future<void> respond(uint8_t id, const uint8_t *mac_addr, uint8_t type, const Vector<T> &items);
     template<typename T, size_t Count, typename = std::enable_if_t<!std::is_pointer_v<T> && std::is_standard_layout_v<T>>>
     Future<void> respond(uint8_t id, const uint8_t *mac_addr, uint8_t type, const T (&items)[Count]);
     template<typename T, typename = std::enable_if_t<!std::is_pointer_v<T> && std::is_standard_layout_v<T>>>
@@ -97,6 +105,11 @@ Future<void> NowIo::send(const uint8_t *mac_addr, uint8_t type, const std::vecto
     return send(mac_addr, type, items.size(), (uint8_t *) items.data(), sizeof(T) * items.size());
 }
 
+template<typename T, typename>
+Future<void> NowIo::send(const uint8_t *mac_addr, uint8_t type, const Vector<T> &items) {
+    return send(mac_addr, type, items.size(), (uint8_t *) items.data(), sizeof(T) * items.size());
+}
+
 template<typename T, size_t Count, typename>
 Future<void> NowIo::send(const uint8_t *mac_addr, uint8_t type, const T (&items)[Count]) {
     return send(mac_addr, type, Count, (uint8_t *) items, sizeof(T) * Count);
@@ -112,6 +125,11 @@ Future<NowPacket> NowIo::request(const uint8_t *mac_addr, uint8_t type, const st
     return request(mac_addr, type, items.size(), (uint8_t *) items.data(), sizeof(T) * items.size());
 }
 
+template<typename T, typename>
+Future<NowPacket> NowIo::request(const uint8_t *mac_addr, uint8_t type, const Vector<T> &items) {
+    return request(mac_addr, type, items.size(), (uint8_t *) items.data(), sizeof(T) * items.size());
+}
+
 template<typename T, size_t Count, typename>
 Future<NowPacket> NowIo::request(const uint8_t *mac_addr, uint8_t type, const T (&items)[Count]) {
     return request(mac_addr, type, Count, (uint8_t *) items, sizeof(T) * Count);
@@ -124,6 +142,11 @@ Future<NowPacket> NowIo::request(const uint8_t *mac_addr, uint8_t type, const T 
 
 template<typename T, typename>
 Future<void> NowIo::respond(uint8_t id, const uint8_t *mac_addr, uint8_t type, const std::vector<T> &items) {
+    return respond(id, mac_addr, type, (uint8_t *) items.data(), sizeof(T) * items.size());
+}
+
+template<typename T, typename> Future<void>
+NowIo::respond(uint8_t id, const uint8_t *mac_addr, uint8_t type, const Vector<T> &items) {
     return respond(id, mac_addr, type, (uint8_t *) items.data(), sizeof(T) * items.size());
 }
 

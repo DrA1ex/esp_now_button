@@ -5,7 +5,6 @@
 #include <lib/debug.h>
 
 #ifdef CONFIG_CXX_EXCEPTIONS
-#include <exception>
 #include <stdexcept>
 #endif
 
@@ -35,6 +34,9 @@ public:
     ~Vector();
 
     bool reserve(uint32_t capacity);
+    void resize(uint32_t size, T value = {});
+
+    void clear();
 
     template<typename... Args> T &emplace(Args... args);
     void push(const T &value);
@@ -46,6 +48,9 @@ public:
 
     T *begin() noexcept { return (T *) _data; }
     T *end() noexcept { return (T *) _data + _size; }
+
+    const T *begin() const noexcept { return (T *) _data; }
+    const T *end() const noexcept { return (T *) _data + _size; }
 
 private:
     void _grow_if_needed();
@@ -111,6 +116,18 @@ bool Vector<T>::reserve(uint32_t capacity) {
 
     delete[] old_data;
     return true;
+}
+
+template<typename T>
+void Vector<T>::resize(uint32_t size, T value) {
+    if (size == _size) return;
+    while (size < _size) pop();
+    while (size > _size) push(value);
+}
+
+template<typename T>
+void Vector<T>::clear() {
+    while (_size > 0) pop();
 }
 
 template<typename T> template<typename... Args>

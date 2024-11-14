@@ -1,11 +1,12 @@
 #pragma once
 
+#include <array>
 #include <cstdint>
 
 constexpr uint8_t BUTTON_COUNT = 2;
-constexpr uint8_t BUTTON_PINS[BUTTON_COUNT] = {0, 1};
+constexpr std::array<uint8_t, BUTTON_COUNT> BUTTON_PINS = {0, 1};
 
-constexpr uint8_t PIN_LED = 3;
+constexpr uint8_t LED_PIN = 3;
 
 constexpr unsigned long DISCOVERY_TIMEOUT = 5000;
 constexpr unsigned long SEND_TIMEOUT = 500;
