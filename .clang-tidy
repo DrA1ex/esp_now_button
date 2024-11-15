@@ -164,6 +164,8 @@ CheckOptions:
   readability-identifier-naming.PublicMemberCase: lower_case
   readability-identifier-naming.ProtectedMemberCase: lower_case
   readability-identifier-naming.PrivateMemberCase: lower_case
+  readability-identifier-naming.ProtectedMemberPrefix: _
+  readability-identifier-naming.ProtectedMethodPrefix: _
   readability-identifier-naming.PrivateMemberPrefix: _
   readability-identifier-naming.PrivateMethodPrefix: _
   readability-identifier-naming.PrivateClassMemberPrefix: _

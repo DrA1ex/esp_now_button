@@ -3,11 +3,12 @@
 #include <lib/misc/led.h>
 #include <lib/network/now_io.h>
 
+#include "misc/async_handlers/button_event_send_handler.h"
+#include "misc/async_handlers/discovery_handler.h"
+#include "misc/async_handlers/state_indication_handler.h"
 #include "misc/debugger.h"
-
-#include "button_manager.h"
+#include "misc/button_manager.h"
 #include "constants.h"
-#include "type.h"
 
 RTC_DATA_ATTR bool hub_addr_present = false;
 RTC_DATA_ATTR uint8_t hub_addr[6] {};
@@ -15,10 +16,10 @@ RTC_DATA_ATTR uint8_t wifi_channel = 0;
 RTC_DATA_ATTR uint8_t error_count = 0;
 
 uint32_t initialized_time = 0;
-auto &now = NowIo::instance();
 
-Future<uint8_t> discovery_future = Future<uint8_t>::errored();
-uint32_t discovery_started_at = 0;
+DiscoveryHandler discovery_handler;
+ButtonEventSendHandler button_event_sender;
+StateIndicationHandler state_indication_handler;
 
 extern Led led;
 extern ButtonManager<BUTTON_COUNT> button_manager;
@@ -61,11 +62,17 @@ void StateMachine::_execute() {
         case ApplicationState::DATA_SENDING:
             return _data_sending();
 
+        case ApplicationState::DATA_SENDING_WAIT:
+            return _data_sending_wait();
+
         case ApplicationState::FINISHED:
             return _finished();
 
         case ApplicationState::RESULT_INDICATION:
             return _result_indication();
+
+        case ApplicationState::RESULT_INDICATION_WAIT:
+            return _result_indication_wait();
 
         case ApplicationState::TURNING_OFF:
             return _turning_off();
@@ -104,35 +111,38 @@ void StateMachine::_network_initialization() {
 
     initialized_time = millis();
 
-    now.begin();
+    NowIo::instance().begin();
     AsyncEspNowInteraction::print_mac();
 
-    if (!hub_addr_present) {
-        _change_state(ApplicationState::DISCOVERY);
-    } else {
+    if (hub_addr_present) {
         AsyncEspNow::instance().change_channel(wifi_channel);
         _change_state(ApplicationState::BUTTON_HANDLE);
+    } else {
+        _change_state(ApplicationState::DISCOVERY);
     }
 }
 
 void StateMachine::_discovery() {
-    discovery_future = now.discover_hub(hub_addr);
-    discovery_started_at = millis();
+    discovery_handler.discover();
     _change_state(ApplicationState::DISCOVERY_WAIT);
 }
 
 void StateMachine::_discovery_wait() {
-    bool timeout = millis() - discovery_started_at >= DISCOVERY_TIMEOUT;
-    if (timeout || discovery_future.finished() && !discovery_future.success()) {
+    if (discovery_handler.state() == DiscoveryHandler::State::PENDING) return;
+
+    if (discovery_handler.state() != DiscoveryHandler::State::SUCCESS) {
         D_PRINT("*** Unable to find HUB. Exit...");
 
         _change_state(ApplicationState::FINISHED);
         _command_state = CommandState::HUB_MISSING;
-    } else if (discovery_future.success()) {
-        hub_addr_present = true;
-        wifi_channel = discovery_future.result();
-        _change_state(ApplicationState::BUTTON_HANDLE);
+        return;
     }
+
+    hub_addr_present = true;
+    wifi_channel = discovery_handler.hub_channel();
+    memcpy(hub_addr, discovery_handler.hub_mac_addr(), sizeof(hub_addr));
+
+    _change_state(ApplicationState::BUTTON_HANDLE);
 }
 
 void StateMachine::_button_handle() {
@@ -150,23 +160,25 @@ void StateMachine::_data_sending() {
         return;
     }
 
-    auto events = button_manager.events();
-    for (int i = 0; i < BUTTON_COUNT; ++i) {
-        D_PRINTF("Button #%i: Type: %i, Count %i\r\n", i, events[i].event_type, events[i].click_count);
-    }
+    button_event_sender.send(hub_addr, button_manager.events());
+    _change_state(ApplicationState::DATA_SENDING_WAIT);
+}
 
-    auto send_future = now.send(hub_addr, (uint8_t) PacketType::BUTTON, events);
+void StateMachine::_data_sending_wait() {
+    using State = ButtonEventSendHandler::State;
+    auto state = button_event_sender.state();
 
-    if (!send_future.wait(SEND_TIMEOUT) || !send_future.success()) {
-        D_PRINTF("Failed to send message: %s\r\n", send_future.finished() ? "error" : "timeout");
+    if (state == State::PENDING) return;
 
-        _command_state = send_future.finished() ? CommandState::SEND_ERROR : CommandState::SEND_TIMEOUT;
-        _change_state(ApplicationState::FINISHED);
-        ++error_count;
-    } else {
+    if (state == State::SUCCESS) {
         _command_state = CommandState::SUCCESS;
         _change_state(ApplicationState::FINISHED);
         error_count = 0;
+    } else {
+        D_PRINTF("Failed to send message: %s\r\n", state == State::ERROR ? "error" : "timeout");
+        _command_state = state == State::ERROR ? CommandState::SEND_ERROR : CommandState::SEND_TIMEOUT;
+        _change_state(ApplicationState::FINISHED);
+        ++error_count;
     }
 }
 
@@ -178,8 +190,6 @@ void StateMachine::_finished() {
 }
 
 void StateMachine::_result_indication() {
-    led.turn_off();
-
     bool need_indication = false;
     uint8_t blink_count = 0;
     switch (_command_state) {
@@ -200,14 +210,15 @@ void StateMachine::_result_indication() {
     }
 
     if (need_indication) {
-        delay(led.blink_repeat_interval());
-        led.blink(blink_count, false);
-
-        while (led.active()) {
-            led.tick();
-            delay(DELAY_AMOUNT);
-        }
+        state_indication_handler.start(led, blink_count);
+        _change_state(ApplicationState::RESULT_INDICATION_WAIT);
+    } else {
+        _change_state(ApplicationState::TURNING_OFF);
     }
+}
+
+void StateMachine::_result_indication_wait() {
+    if (state_indication_handler.state() == StateIndicationHandler::State::PENDING) return;
 
     _change_state(ApplicationState::TURNING_OFF);
 }

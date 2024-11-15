@@ -13,9 +13,11 @@ enum class ApplicationState: uint8_t {
 
     BUTTON_HANDLE,
     DATA_SENDING,
+    DATA_SENDING_WAIT,
 
     FINISHED,
     RESULT_INDICATION,
+    RESULT_INDICATION_WAIT,
 
     TURNING_OFF,
     END
@@ -50,8 +52,10 @@ private:
     void _discovery_wait();
     void _button_handle();
     void _data_sending();
+    void _data_sending_wait();
     void _finished();
     void _result_indication();
+    void _result_indication_wait();
     void _turning_off();
     void _end();
 };

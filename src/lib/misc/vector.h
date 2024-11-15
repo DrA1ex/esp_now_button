@@ -45,6 +45,7 @@ public:
 
     T *at(uint32_t index) noexcept;
     T &operator[](uint32_t index);
+    T &operator[](uint32_t index) const;
 
     T *begin() noexcept { return (T *) _data; }
     T *end() noexcept { return (T *) _data + _size; }
@@ -190,6 +191,10 @@ T &Vector<T>::operator[](uint32_t index) {
     }
 
     return ((T *) _data)[index];
+}
+
+template<typename T> T &Vector<T>::operator[](uint32_t index) const {
+    return (*const_cast<Vector *>(this))[index];
 }
 
 template<typename T>
