@@ -11,12 +11,14 @@ constexpr uint8_t LED_PIN = 3;
 constexpr unsigned long DISCOVERY_TIMEOUT = 5000;
 constexpr unsigned long SEND_TIMEOUT = 500;
 constexpr unsigned long BUTTON_WAIT_TIMEOUT = 600;
+constexpr unsigned long BUTTON_REPEAT_TIMEOUT = 1000;
 
 constexpr unsigned long DELAY_AMOUNT = 10;
 
 constexpr unsigned long LED_HOLDING_BLINK_INTERVAL = 200;
 
 constexpr uint8_t SEND_ERROR_BEFORE_RESET = 3;
+constexpr uint8_t SEND_RETRY_COUNT = 3;
 
 #define BTN_MODE                                (INPUT_PULLDOWN)
 #define BTN_HIGH_STATE                          (true)

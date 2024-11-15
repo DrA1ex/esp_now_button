@@ -3,35 +3,24 @@
 #include <cstdint>
 
 enum class ApplicationState: uint8_t {
-    INITIAL,
+    INITIAL, RESET,
 
-    RESET,
-
-    NETWORK_INITIALIZATION,
-    DISCOVERY,
-    DISCOVERY_WAIT,
+    NETWORK_INITIALIZATION, DISCOVERY, DISCOVERY_WAIT,
 
     BUTTON_HANDLE,
-    DATA_SENDING,
-    DATA_SENDING_WAIT,
+    DATA_SENDING, DATA_SENDING_WAIT, DATA_SENDING_SUCCESS, DATA_SENDING_ERROR,
 
-    FINISHED,
-    RESULT_INDICATION,
-    RESULT_INDICATION_WAIT,
+    FINISHED, RESULT_INDICATION, RESULT_INDICATION_WAIT,
 
-    TURNING_OFF,
-    END
+    TURNING_OFF, END
 };
 
 enum class CommandState: uint8_t {
     UNKNOWN,
 
-    SUCCESS,
-    NOTHING_TO_SEND,
+    SUCCESS, NOTHING_TO_SEND,
 
-    HUB_MISSING,
-    SEND_TIMEOUT,
-    SEND_ERROR
+    HUB_MISSING, SEND_TIMEOUT, SEND_ERROR
 };
 
 class StateMachine {
@@ -53,6 +42,8 @@ private:
     void _button_handle();
     void _data_sending();
     void _data_sending_wait();
+    void _data_sending_success();
+    void _data_sending_error();
     void _finished();
     void _result_indication();
     void _result_indication_wait();

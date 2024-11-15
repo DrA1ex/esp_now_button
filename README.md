@@ -43,6 +43,6 @@ pio run -t upload -e $PLATFORM-$ENV --upload-port "$ADDRESS"
 ## Roadmap
 
 - [ ] Release HUB firmware
-- [ ] Add support for long pressing
+- [x] Add support for long pressing
 - [ ] Add customization options
 - [ ] Expand compatibility

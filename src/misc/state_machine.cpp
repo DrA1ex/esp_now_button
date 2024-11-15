@@ -15,7 +15,9 @@ RTC_DATA_ATTR uint8_t hub_addr[6] {};
 RTC_DATA_ATTR uint8_t wifi_channel = 0;
 RTC_DATA_ATTR uint8_t error_count = 0;
 
-uint32_t initialized_time = 0;
+uint32_t button_wait_start_time = 0;
+uint16_t button_event_sent_count = 0;
+uint16_t send_retry_count = 0;
 
 DiscoveryHandler discovery_handler;
 ButtonEventSendHandler button_event_sender;
@@ -23,6 +25,7 @@ StateIndicationHandler state_indication_handler;
 
 extern Led led;
 extern ButtonManager<BUTTON_COUNT> button_manager;
+
 
 void StateMachine::execute() {
     ApplicationState prev_state;
@@ -36,54 +39,38 @@ void StateMachine::_change_state(ApplicationState new_state) {
     if (_state == new_state) return;
 
     VERBOSE(D_PRINTF("StateMachine: Change state from %i to %i\r\n", _state, new_state));
+
+    if (new_state == ApplicationState::BUTTON_HANDLE) {
+        button_wait_start_time = millis();
+    }
+
     _state = new_state;
 }
 
 void StateMachine::_execute() {
+    // @formatter:off
     switch (_state) {
-        case ApplicationState::INITIAL:
-            return _initial();
-
-        case ApplicationState::RESET:
-            return _reset();
-
-        case ApplicationState::NETWORK_INITIALIZATION:
-            return _network_initialization();
-
-        case ApplicationState::DISCOVERY:
-            return _discovery();
-
-        case ApplicationState::DISCOVERY_WAIT:
-            return _discovery_wait();
-
-        case ApplicationState::BUTTON_HANDLE:
-            return _button_handle();
-
-        case ApplicationState::DATA_SENDING:
-            return _data_sending();
-
-        case ApplicationState::DATA_SENDING_WAIT:
-            return _data_sending_wait();
-
-        case ApplicationState::FINISHED:
-            return _finished();
-
-        case ApplicationState::RESULT_INDICATION:
-            return _result_indication();
-
-        case ApplicationState::RESULT_INDICATION_WAIT:
-            return _result_indication_wait();
-
-        case ApplicationState::TURNING_OFF:
-            return _turning_off();
-
-        case ApplicationState::END:
-            return _end();
+        case ApplicationState::INITIAL:                     _initial(); break;
+        case ApplicationState::RESET:                       _reset(); break;
+        case ApplicationState::NETWORK_INITIALIZATION:      _network_initialization(); break;
+        case ApplicationState::DISCOVERY:                   _discovery(); break;
+        case ApplicationState::DISCOVERY_WAIT:              _discovery_wait(); break;
+        case ApplicationState::BUTTON_HANDLE:               _button_handle(); break;
+        case ApplicationState::DATA_SENDING:                _data_sending(); break;
+        case ApplicationState::DATA_SENDING_WAIT:           _data_sending_wait(); break;
+        case ApplicationState::DATA_SENDING_SUCCESS:        _data_sending_success(); break;
+        case ApplicationState::DATA_SENDING_ERROR:          _data_sending_error(); break;
+        case ApplicationState::FINISHED:                    _finished(); break;
+        case ApplicationState::RESULT_INDICATION:           _result_indication(); break;
+        case ApplicationState::RESULT_INDICATION_WAIT:      _result_indication_wait(); break;
+        case ApplicationState::TURNING_OFF:                 _turning_off(); break;
+        case ApplicationState::END:                         _end(); break;
 
         default:
             D_PRINTF("StateMachine: Unknown state %i\r\n", _state);
             _change_state(ApplicationState::END);
     }
+    // @formatter:on
 }
 
 void StateMachine::_initial() {
@@ -108,8 +95,6 @@ void StateMachine::_network_initialization() {
 #ifdef DEBUG
     Debugger::begin();
 #endif
-
-    initialized_time = millis();
 
     NowIo::instance().begin();
     AsyncEspNowInteraction::print_mac();
@@ -146,9 +131,12 @@ void StateMachine::_discovery_wait() {
 }
 
 void StateMachine::_button_handle() {
-    if (button_manager.idle() && millis() - initialized_time > BUTTON_WAIT_TIMEOUT) {
-        _change_state(ApplicationState::DATA_SENDING);
-    }
+    auto can_continue = button_event_sent_count == 0
+                            ? ((button_manager.holding() || button_manager.idle())
+                                && millis() - button_wait_start_time > BUTTON_WAIT_TIMEOUT)
+                            : millis() - button_wait_start_time > BUTTON_REPEAT_TIMEOUT;
+
+    if (can_continue) _change_state(ApplicationState::DATA_SENDING);
 }
 
 void StateMachine::_data_sending() {
@@ -165,15 +153,41 @@ void StateMachine::_data_sending() {
 }
 
 void StateMachine::_data_sending_wait() {
+    auto state = button_event_sender.state();
+    if (state == ButtonEventSendHandler::State::PENDING) return;
+
+    if (state == ButtonEventSendHandler::State::SUCCESS) {
+        _change_state(ApplicationState::DATA_SENDING_SUCCESS);
+    } else {
+        _change_state(ApplicationState::DATA_SENDING_ERROR);
+    }
+}
+
+void StateMachine::_data_sending_success() {
+    if (button_manager.holding()) {
+        D_PRINT("Button still pressed. Repeating...");
+        ++button_event_sent_count;
+        _change_state(ApplicationState::BUTTON_HANDLE);
+    } else if (button_event_sent_count > 0) {
+        D_PRINT("Button released. Sending release event...");
+        button_event_sent_count = 0;
+        _change_state(ApplicationState::DATA_SENDING);
+    } else {
+        _command_state = CommandState::SUCCESS;
+        _change_state(ApplicationState::FINISHED);
+    }
+
+    error_count = 0;
+}
+
+void StateMachine::_data_sending_error() {
     using State = ButtonEventSendHandler::State;
     auto state = button_event_sender.state();
 
-    if (state == State::PENDING) return;
-
-    if (state == State::SUCCESS) {
-        _command_state = CommandState::SUCCESS;
-        _change_state(ApplicationState::FINISHED);
-        error_count = 0;
+    if (send_retry_count < SEND_RETRY_COUNT) {
+        D_PRINT("Data sending failed. Retrying...");
+        _change_state(ApplicationState::DATA_SENDING);
+        ++send_retry_count;
     } else {
         D_PRINTF("Failed to send message: %s\r\n", state == State::ERROR ? "error" : "timeout");
         _command_state = state == State::ERROR ? CommandState::SEND_ERROR : CommandState::SEND_TIMEOUT;
@@ -181,6 +195,7 @@ void StateMachine::_data_sending_wait() {
         ++error_count;
     }
 }
+
 
 void StateMachine::_finished() {
     if (button_manager.active()) return;
@@ -190,27 +205,19 @@ void StateMachine::_finished() {
 }
 
 void StateMachine::_result_indication() {
-    bool need_indication = false;
+    bool need_indication = true;
     uint8_t blink_count = 0;
+    // @formatter:off
     switch (_command_state) {
-        case CommandState::HUB_MISSING:
-            blink_count = 5;
-            need_indication = true;
-            break;
-        case CommandState::SEND_TIMEOUT:
-            blink_count = 4;
-            need_indication = true;
-            break;
-        case CommandState::SEND_ERROR:
-            blink_count = 3;
-            need_indication = true;
-            break;
-
-        default:;
+        case CommandState::HUB_MISSING:      blink_count = 5; break;
+        case CommandState::SEND_TIMEOUT:     blink_count = 4; break;
+        case CommandState::SEND_ERROR:       blink_count = 3; break;
+        default: need_indication = false;
     }
+    // @formatter:on
 
     if (need_indication) {
-        state_indication_handler.start(led, blink_count);
+        state_indication_handler.blink(led, blink_count);
         _change_state(ApplicationState::RESULT_INDICATION_WAIT);
     } else {
         _change_state(ApplicationState::TURNING_OFF);

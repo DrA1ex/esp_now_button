@@ -22,7 +22,10 @@ private:
 };
 
 inline void AsyncHandlerBase::_start(const std::function<Future<void>()> &future_fn, unsigned long timeout) {
-    if (_state == State::PENDING) return;
+    if (_state == State::PENDING) {
+        D_PRINT("AsyncHandlerBase: Handler still running. Skipping...");
+        return;
+    }
 
     if (timeout > 0) {
         bool timer_ok = SystemTimer::set_timeout(timeout, [&] {

@@ -23,6 +23,7 @@ public:
     void tick();
 
     [[nodiscard]] bool idle() const;
+    [[nodiscard]] bool holding() const;
     [[nodiscard]] bool active() const;
     [[nodiscard]] bool empty() const;
 
@@ -64,6 +65,13 @@ bool ButtonManager<Size>::idle() const {
 }
 
 template<uint8_t Size>
+bool ButtonManager<Size>::holding() const {
+    return std::any_of(_buttons.begin(), _buttons.end(), [](auto &b) {
+        return !b.idle() && b.last_state().hold;
+    });
+}
+
+template<uint8_t Size>
 bool ButtonManager<Size>::active() const {
     return std::all_of(_buttons.begin(), _buttons.end(), [](auto &b) { return !b.idle(); });
 }
@@ -75,9 +83,12 @@ template<uint8_t Size> bool ButtonManager<Size>::empty() const {
 template<uint8_t Size>
 const Vector<ButtonEvent> &ButtonManager<Size>::events() {
     for (int i = 0; i < Size; ++i) {
-        auto &btn_state = _buttons[i].last_state();
+        auto &button = _buttons[i];
+        auto &btn_state = button.last_state();
         _events[i] = {
-            .event_type = btn_state.hold ? ButtonEventType::HOLD : ButtonEventType::CLICKED,
+            .event_type = btn_state.hold
+                              ? (button.idle() ? ButtonEventType::RELEASED : ButtonEventType::HOLD)
+                              : ButtonEventType::CLICKED,
             .click_count = btn_state.click_count
         };
     }

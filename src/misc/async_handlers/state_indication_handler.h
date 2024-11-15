@@ -4,10 +4,10 @@
 
 class StateIndicationHandler : public AsyncHandlerBase {
 public:
-    void start(Led &led, uint8_t blink_count);
+    void blink(Led &led, uint8_t blink_count);
 };
 
-inline void StateIndicationHandler::start(Led &led, uint8_t blink_count) {
+inline void StateIndicationHandler::blink(Led &led, uint8_t blink_count) {
     _start([&] {
         led.turn_off();
         led.blink(blink_count, false);
