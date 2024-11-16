@@ -5,8 +5,8 @@
 #include <unordered_map>
 #include <WiFi.h>
 
-#include "../../misc/promise.h"
-#include "../../debug.h"
+#include <lib/async/promise.h>
+#include <lib/debug.h>
 
 struct EspNowPacket {
     uint8_t mac_addr[6];

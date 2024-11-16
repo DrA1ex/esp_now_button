@@ -49,6 +49,7 @@ void ButtonManager<Size>::end() {
     if (!_initialized) return;
 
     _buttons.clear();
+    _events.clear();
     _initialized = false;
 }
 

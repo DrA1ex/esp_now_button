@@ -1,7 +1,7 @@
 #pragma once
 
-#include <lib/misc/future.h>
-#include <lib/misc/system_timer.h>
+#include <lib/async/future.h>
+#include <lib/async/system_timer.h>
 
 class AsyncHandlerBase {
 public:

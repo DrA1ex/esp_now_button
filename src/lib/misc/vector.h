@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <new>
+
 #include <lib/debug.h>
 
 #ifdef CONFIG_CXX_EXCEPTIONS
@@ -21,7 +22,7 @@ template<typename T>
 class Vector {
     uint32_t _capacity = 0;
     uint32_t _size = 0;
-    uint8_t *_data = nullptr; // Use uint8_t* to avoid call constructor when allocaling memory
+    uint8_t *_data = nullptr; // Use uint8_t* to avoid call constructor when allocating memory
 
 public:
     T *data() { return (T *) _data; }
@@ -30,7 +31,10 @@ public:
     [[nodiscard]] uint32_t capacity() const { return _capacity; }
     [[nodiscard]] uint32_t size() const { return _size; }
 
-    explicit Vector(uint32_t capacity = 0);
+    Vector() = default;
+    Vector(std::initializer_list<T> init);
+    explicit Vector(uint32_t size, T value = {});
+
     ~Vector();
 
     bool reserve(uint32_t capacity);
@@ -59,8 +63,16 @@ private:
 
 
 template<typename T>
-Vector<T>::Vector(uint32_t capacity) {
-    reserve(capacity);
+Vector<T>::Vector(uint32_t size, T value) {
+    resize(size, value);
+}
+
+template<typename T>
+Vector<T>::Vector(std::initializer_list<T> init): Vector(init.size()) {
+    uint32_t index = 0;
+    for (auto &&item: init) {
+        (*this)[index++] = std::move(item);
+    }
 }
 
 template<typename T>
@@ -122,6 +134,8 @@ bool Vector<T>::reserve(uint32_t capacity) {
 template<typename T>
 void Vector<T>::resize(uint32_t size, T value) {
     if (size == _size) return;
+
+    reserve(size);
     while (size < _size) pop();
     while (size > _size) push(value);
 }
