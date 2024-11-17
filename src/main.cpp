@@ -5,6 +5,7 @@
 #include <lib/misc/led.h>
 #include <lib/misc/vector.h>
 #include <lib/network/now_io.h>
+#include <misc/debugger.h>
 
 StateMachine state_machine;
 Led led(LED_PIN);

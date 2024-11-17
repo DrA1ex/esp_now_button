@@ -1,6 +1,7 @@
-#include "system_timer.h"
-
 #include <esp_task_wdt.h>
+
+#include "system_timer.h"
+#include "promise.h"
 
 bool SystemTimer::initialized = false;
 uint64_t SystemTimer::begin_processing_micros = 0;

@@ -145,8 +145,7 @@ Future<void> NowIo::respond(uint8_t id, const uint8_t *mac_addr, uint8_t type, c
     return respond(id, mac_addr, type, (uint8_t *) items.data(), sizeof(T) * items.size());
 }
 
-template<typename T, typename> Future<void>
-NowIo::respond(uint8_t id, const uint8_t *mac_addr, uint8_t type, const Vector<T> &items) {
+template<typename T, typename> Future<void> NowIo::respond(uint8_t id, const uint8_t *mac_addr, uint8_t type, const Vector<T> &items) {
     return respond(id, mac_addr, type, (uint8_t *) items.data(), sizeof(T) * items.size());
 }
 

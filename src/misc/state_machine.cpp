@@ -17,7 +17,6 @@ RTC_DATA_ATTR uint8_t error_count = 0;
 
 uint32_t button_wait_start_time = 0;
 uint16_t button_event_sent_count = 0;
-uint16_t send_retry_count = 0;
 
 DiscoveryHandler discovery_handler;
 ButtonEventSendHandler button_event_sender;
@@ -184,16 +183,10 @@ void StateMachine::_data_sending_error() {
     using State = ButtonEventSendHandler::State;
     auto state = button_event_sender.state();
 
-    if (send_retry_count < SEND_RETRY_COUNT) {
-        D_PRINT("Data sending failed. Retrying...");
-        _change_state(ApplicationState::DATA_SENDING);
-        ++send_retry_count;
-    } else {
-        D_PRINTF("Failed to send message: %s\r\n", state == State::ERROR ? "error" : "timeout");
-        _command_state = state == State::ERROR ? CommandState::SEND_ERROR : CommandState::SEND_TIMEOUT;
-        _change_state(ApplicationState::FINISHED);
-        ++error_count;
-    }
+    D_PRINTF("Failed to send message: %s\r\n", state == State::ERROR ? "error" : "timeout");
+    _command_state = state == State::ERROR ? CommandState::SEND_ERROR : CommandState::SEND_TIMEOUT;
+    _change_state(ApplicationState::FINISHED);
+    ++error_count;
 }
 
 

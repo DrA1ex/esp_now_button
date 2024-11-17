@@ -20,6 +20,27 @@ inline void ButtonEventSendHandler::send(const uint8_t *mac_addr, const Vector<B
             D_PRINTF("\t- Button #%i: Type: %i, Count %i\r\n", i, events[i].event_type, events[i].click_count);
         }
 
-        return NowIo::instance().send(mac_addr, (uint8_t) PacketType::BUTTON, events);
-    }, timeout);
+        auto send_fn = [=, &events] {
+            return NowIo::instance().send(mac_addr, (uint8_t) PacketType::BUTTON, events)
+                                    .with_timeout(timeout);
+        };
+
+        auto retry_left = std::make_shared<int>(SEND_RETRY_COUNT);
+        return PromiseBase::sequential<void>(send_fn(),
+            [=](auto &f) {
+                if (f.success()) return false;
+
+                if ((*retry_left)-- > 0) {
+                    D_PRINT("ButtonEventSendHandler: Data sending failed. Retrying...");
+                    return true;
+                }
+
+                D_PRINT("ButtonEventSendHandler: Data sending failed. No Retry attempts left");
+                return false;
+            },
+            [send_fn = std::move(send_fn)](auto) {
+                return SystemTimer::delay(SEND_RETRY_DELAY)
+                        .then<void>([=](auto) { return send_fn(); });
+            });
+    }, 0);
 }
